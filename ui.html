@@ -433,8 +433,10 @@
       
       renderVariablesList(variableMatches);
       
-      // Aktiver swap-knapp hvis det finnes matchende variabler
-      const hasMatches = variableMatches.some(match => match.localVariable);
+      // Aktiver swap-knapp hvis det finnes matchende variabler eller text styles
+      const hasMatches = variableMatches.some(match => 
+        match.localVariable !== null || match.localTextStyle !== null
+      );
       swapBtnEl.disabled = !hasMatches;
       
       resultsEl.classList.remove('hidden');
@@ -469,20 +471,42 @@
         const item = document.createElement('div');
         item.className = 'variable-item';
         
-        const hasLocalMatch = match.localVariable !== null;
-        const statusClass = hasLocalMatch ? 'status-found' : 'status-missing';
-        const statusText = hasLocalMatch ? '✓' : '✗';
+        // Håndter text styles vs vanlige variabler
+        let hasLocalMatch, statusClass, statusText, variableNames;
+        
+        if (match.field === 'textStyleId') {
+          // Text style match
+          hasLocalMatch = match.localTextStyle !== null;
+          statusClass = hasLocalMatch ? 'status-found' : 'status-missing';
+          statusText = hasLocalMatch ? '✓' : '✗';
+          
+          variableNames = `
+            <span>${match.currentTextStyle?.name || 'Ukjent text style'}</span>
+            <span class="variable-arrow">→</span>
+            <span>${match.localTextStyle?.name || 'Ikke funnet'}</span>
+          `;
+        } else {
+          // Vanlig variabel match
+          hasLocalMatch = match.localVariable !== null;
+          statusClass = hasLocalMatch ? 'status-found' : 'status-missing';
+          statusText = hasLocalMatch ? '✓' : '✗';
+          
+          variableNames = `
+            <span>${match.currentVariable?.name || 'Ukjent'}</span>
+            <span class="variable-arrow">→</span>
+            <span>${match.localVariable?.name || 'Ikke funnet'}</span>
+          `;
+        }
         
         const variantInfo = match.variantName ? `<div class="variable-variant">Variant: ${match.variantName}</div>` : '';
+        const fieldLabel = match.field === 'textStyleId' ? 'Text Style' : match.field;
         
         item.innerHTML = `
           <div class="variable-info">
-            <div class="variable-field">${match.field}</div>
+            <div class="variable-field">${fieldLabel}</div>
             ${variantInfo}
             <div class="variable-names">
-              <span>${match.currentVariable?.name || 'Ukjent'}</span>
-              <span class="variable-arrow">→</span>
-              <span>${match.localVariable?.name || 'Ikke funnet'}</span>
+              ${variableNames}
             </div>
           </div>
           <div class="variable-status ${statusClass}">

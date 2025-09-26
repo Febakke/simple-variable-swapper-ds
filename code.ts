@@ -32,6 +32,15 @@ type VariableMatch = {
   nodeType: string;
   variantName?: string;
   nodeId: string;
+  // Text style matching
+  currentTextStyle?: {
+    id: string;
+    name: string;
+  } | null;
+  localTextStyle?: {
+    id: string;
+    name: string;
+  } | null;
 };
 
 // Hovedmelding-håndterer
@@ -98,7 +107,9 @@ async function analyzeSelection() {
     localVariableIdSet.add(variable.id);
   });
 
-  console.log(`[VARIABLE_ANALYSIS_DEBUG] Fant ${localVariables.length} lokale variabler`);
+  // Hent alle lokale text styles
+  const localTextStyles = await figma.getLocalTextStylesAsync();
+  console.log(`[VARIABLE_ANALYSIS_DEBUG] Fant ${localVariables.length} lokale variabler og ${localTextStyles.length} lokale text styles`);
 
   // Analyser komponenten for variabler
   const variableMatches: VariableMatch[] = [];
@@ -106,11 +117,11 @@ async function analyzeSelection() {
   if (selectedNode.type === 'COMPONENT_SET') {
     // For ComponentSet, analyser alle varianter
     console.log(`[VARIABLE_ANALYSIS_DEBUG] Analyserer ComponentSet med ${(selectedNode as ComponentSetNode).children.length} varianter`);
-    await analyzeComponentSetForVariables(selectedNode as ComponentSetNode, localVariableMap, localVariableIdSet, variableMatches);
+    await analyzeComponentSetForVariables(selectedNode as ComponentSetNode, localVariableMap, localVariableIdSet, localTextStyles, variableMatches);
   } else {
     // For enkelt komponent eller instans
     console.log(`[VARIABLE_ANALYSIS_DEBUG] Analyserer enkelt komponent/instans`);
-    await analyzeNodeForVariables(selectedNode as SceneNode, localVariableMap, localVariableIdSet, variableMatches);
+    await analyzeNodeForVariables(selectedNode as SceneNode, localVariableMap, localVariableIdSet, localTextStyles, variableMatches);
   }
 
   console.log(`[VARIABLE_ANALYSIS_DEBUG] Analyse fullført. Totalt ${variableMatches.length} variabler funnet`);
@@ -136,13 +147,75 @@ async function analyzeComponentSetForVariables(
   componentSet: ComponentSetNode, 
   localVariableMap: Map<string, Variable>, 
   localVariableIdSet: Set<string>,
+  localTextStyles: BaseStyle[],
   matches: VariableMatch[]
 ) {
   // Analyser hver variant i ComponentSet
   for (const variant of componentSet.children) {
     if (variant.type === 'COMPONENT') {
       console.log(`[VARIABLE_ANALYSIS_DEBUG] Analyserer variant: ${variant.name}`);
-      await analyzeNodeForVariables(variant, localVariableMap, localVariableIdSet, matches, variant.name);
+      await analyzeNodeForVariables(variant, localVariableMap, localVariableIdSet, localTextStyles, matches, variant.name);
+    }
+  }
+}
+
+// Analyser text styles på tekstnoder
+async function analyzeTextStyles(
+  node: SceneNode,
+  localTextStyles: BaseStyle[],
+  matches: VariableMatch[],
+  variantName?: string
+) {
+  if (node.type === 'TEXT') {
+    const textNode = node as TextNode;
+    
+    // Sjekk om tekstnode har textStyleId
+    if (textNode.textStyleId && typeof textNode.textStyleId === 'string') {
+      console.log(`[VARIABLE_ANALYSIS_DEBUG] Tekstnode ${textNode.name} har textStyleId: ${textNode.textStyleId}`);
+      
+      // Hent nåværende text style (kan være fra eksternt bibliotek)
+      const currentTextStyle = await figma.getStyleByIdAsync(textNode.textStyleId);
+      
+      if (currentTextStyle) {
+        console.log(`[VARIABLE_ANALYSIS_DEBUG] Nåværende text style: ${currentTextStyle.name} (${currentTextStyle.id})`);
+        
+        // Finn lokal text style med samme navn
+        const localTextStyle = localTextStyles.find(style => style.name === currentTextStyle.name);
+        
+        if (localTextStyle) {
+          console.log(`[VARIABLE_ANALYSIS_DEBUG] Fant lokal text style match: ${localTextStyle.name} (${localTextStyle.id})`);
+          
+          // Hopp over hvis allerede koblet til lokal text style (samme id)
+          if (localTextStyle.id === textNode.textStyleId) {
+            console.log(`[VARIABLE_ANALYSIS_DEBUG] HOPPER OVER: Text style allerede koblet til lokal`);
+            return;
+          }
+          
+          matches.push({
+            field: 'textStyleId',
+            currentVariable: null,
+            localVariable: null,
+            nodeName: textNode.name,
+            nodeType: textNode.type,
+            variantName: variantName,
+            nodeId: textNode.id,
+            currentTextStyle: {
+              id: textNode.textStyleId,
+              name: currentTextStyle.name
+            },
+            localTextStyle: {
+              id: localTextStyle.id,
+              name: localTextStyle.name
+            }
+          });
+        } else {
+          console.log(`[VARIABLE_ANALYSIS_DEBUG] Ingen lokal text style match funnet for navn: ${currentTextStyle.name}`);
+        }
+      } else {
+        console.log(`[VARIABLE_ANALYSIS_DEBUG] Kunne ikke finne text style med ID: ${textNode.textStyleId}`);
+      }
+    } else {
+      console.log(`[VARIABLE_ANALYSIS_DEBUG] Tekstnode ${textNode.name} har ingen textStyleId`);
     }
   }
 }
@@ -312,6 +385,7 @@ async function analyzeNodeForVariables(
   node: SceneNode, 
   localVariableMap: Map<string, Variable>, 
   localVariableIdSet: Set<string>,
+  localTextStyles: BaseStyle[],
   matches: VariableMatch[],
   variantName?: string
 ) {
@@ -366,6 +440,9 @@ async function analyzeNodeForVariables(
     }
   }
 
+  // Spesiell håndtering for text styles (prioritert over typografi-variabler)
+  await analyzeTextStyles(node, localTextStyles, matches, variantName);
+
   // Spesiell håndtering for fargevariabler i fills og strokes
   await analyzeColorVariables(node, localVariableMap, localVariableIdSet, matches, variantName);
 
@@ -399,7 +476,7 @@ async function analyzeNodeForVariables(
   // Analyser children rekursivt
   if ('children' in node) {
     for (const child of node.children) {
-      await analyzeNodeForVariables(child, localVariableMap, localVariableIdSet, matches);
+      await analyzeNodeForVariables(child, localVariableMap, localVariableIdSet, localTextStyles, matches);
     }
   }
 }
@@ -413,8 +490,52 @@ async function swapVariables(variableMatches: VariableMatch[]) {
   console.log(`[VARIABLE_SWAP_DEBUG] Starter bytting av ${variableMatches.length} variabler`);
 
   for (const match of variableMatches) {
-    console.log(`[VARIABLE_SWAP_DEBUG] Behandler variabel: ${match.currentVariable?.name} (${match.currentVariable?.id}) på felt: ${match.field}`);
+    console.log(`[VARIABLE_SWAP_DEBUG] Behandler match: ${match.field} på ${match.nodeName}`);
     
+    // Håndter text styles
+    if (match.field === 'textStyleId' && match.localTextStyle) {
+      try {
+        // Finn noden som har denne text style
+        console.log(`[VARIABLE_SWAP_DEBUG] Søker etter node med ID: ${match.nodeId}`);
+        const node = await figma.getNodeByIdAsync(match.nodeId) as SceneNode;
+        
+        if (!node) {
+          errorCount++;
+          const errorMsg = `Kunne ikke finne node med ID: ${match.nodeId} for text style: ${match.localTextStyle.name}`;
+          errors.push(errorMsg);
+          console.log(`[VARIABLE_SWAP_DEBUG] FEIL: ${errorMsg}`);
+          continue;
+        }
+        
+        if (node.type !== 'TEXT') {
+          errorCount++;
+          const errorMsg = `Node ${node.name} er ikke en TEXT-node (type: ${node.type}) for text style: ${match.localTextStyle.name}`;
+          errors.push(errorMsg);
+          console.log(`[VARIABLE_SWAP_DEBUG] FEIL: ${errorMsg}`);
+          continue;
+        }
+
+        const textNode = node as TextNode;
+        console.log(`[VARIABLE_SWAP_DEBUG] Fant TEXT-node: ${textNode.name}`);
+
+        // Bytt text style
+        console.log(`[VARIABLE_SWAP_DEBUG] Bytter text style til: ${match.localTextStyle.name} (${match.localTextStyle.id})`);
+        await textNode.setTextStyleIdAsync(match.localTextStyle.id);
+        
+        successCount++;
+        console.log(`[VARIABLE_SWAP_DEBUG] SUKSESS: Text style byttet til ${match.localTextStyle.name}`);
+        continue;
+
+      } catch (error) {
+        errorCount++;
+        const errorMsg = `Feil ved bytting av text style ${match.localTextStyle?.name}: ${error}`;
+        errors.push(errorMsg);
+        console.log(`[VARIABLE_SWAP_DEBUG] FEIL: ${errorMsg}`);
+        continue;
+      }
+    }
+    
+    // Håndter vanlige variabler
     if (!match.localVariable) {
       errorCount++;
       const errorMsg = `Ingen lokal variabel funnet for: ${match.currentVariable?.name}`;
@@ -504,19 +625,24 @@ async function swapVariables(variableMatches: VariableMatch[]) {
   });
 }
 
-// Finn node som har en spesifikk variabel
-async function findNodeWithVariable(variableId: string): Promise<SceneNode | null> {
+// Finn node som har en spesifikk variabel eller nodeId
+async function findNodeWithVariable(variableIdOrNodeId: string): Promise<SceneNode | null> {
   const selection = figma.currentPage.selection;
   if (selection.length === 0) return null;
 
   const selectedNode = selection[0];
   
+  // Hvis det er en nodeId (starter med "I:" eller lignende), søk direkte etter node
+  if (variableIdOrNodeId.startsWith('I:') || variableIdOrNodeId.startsWith('V:')) {
+    return findNodeByIdRecursive(selectedNode as SceneNode, variableIdOrNodeId);
+  }
+  
   if (selectedNode.type === 'COMPONENT_SET') {
     // For ComponentSet, søk i alle varianter
-    return findNodeWithVariableInComponentSet(selectedNode as ComponentSetNode, variableId);
+    return findNodeWithVariableInComponentSet(selectedNode as ComponentSetNode, variableIdOrNodeId);
   } else {
     // For enkelt komponent eller instans
-    return findNodeWithVariableRecursive(selectedNode as SceneNode, variableId);
+    return findNodeWithVariableRecursive(selectedNode as SceneNode, variableIdOrNodeId);
   }
 }
 
@@ -529,6 +655,27 @@ function findNodeWithVariableInComponentSet(componentSet: ComponentSetNode, vari
       if (found) return found;
     }
   }
+  return null;
+}
+
+// Søk etter node basert på nodeId
+function findNodeByIdRecursive(node: SceneNode, nodeId: string): SceneNode | null {
+  console.log(`[VARIABLE_SWAP_DEBUG] Søker i node: ${node.name} (${node.id}) for ID: ${nodeId}`);
+  
+  // Sjekk om denne noden har riktig ID
+  if (node.id === nodeId) {
+    console.log(`[VARIABLE_SWAP_DEBUG] Fant node: ${node.name} (${node.id})`);
+    return node;
+  }
+
+  // Søk i children
+  if ('children' in node) {
+    for (const child of node.children) {
+      const found = findNodeByIdRecursive(child, nodeId);
+      if (found) return found;
+    }
+  }
+
   return null;
 }
 
