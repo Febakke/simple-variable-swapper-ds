@@ -31,6 +31,7 @@ type VariableMatch = {
   nodeName: string;
   nodeType: string;
   variantName?: string;
+  nodeId: string;
 };
 
 // Hovedmelding-håndterer
@@ -56,6 +57,8 @@ figma.ui.onmessage = async (msg: PluginMessage) => {
 async function analyzeSelection() {
   const selection = figma.currentPage.selection;
   
+  console.log(`[VARIABLE_ANALYSIS_DEBUG] Starter analyse av valgt node`);
+  
   // Sjekk at en komponent er valgt
   if (selection.length === 0) {
     figma.ui.postMessage({
@@ -74,6 +77,7 @@ async function analyzeSelection() {
   }
 
   const selectedNode = selection[0];
+  console.log(`[VARIABLE_ANALYSIS_DEBUG] Valgt node: ${selectedNode.name} (${selectedNode.type})`);
   
   // Sjekk at det er en komponent, komponent-set eller instans
   if (selectedNode.type !== 'COMPONENT' && selectedNode.type !== 'COMPONENT_SET' && selectedNode.type !== 'INSTANCE') {
@@ -94,16 +98,22 @@ async function analyzeSelection() {
     localVariableIdSet.add(variable.id);
   });
 
+  console.log(`[VARIABLE_ANALYSIS_DEBUG] Fant ${localVariables.length} lokale variabler`);
+
   // Analyser komponenten for variabler
   const variableMatches: VariableMatch[] = [];
   
   if (selectedNode.type === 'COMPONENT_SET') {
     // For ComponentSet, analyser alle varianter
+    console.log(`[VARIABLE_ANALYSIS_DEBUG] Analyserer ComponentSet med ${(selectedNode as ComponentSetNode).children.length} varianter`);
     await analyzeComponentSetForVariables(selectedNode as ComponentSetNode, localVariableMap, localVariableIdSet, variableMatches);
   } else {
     // For enkelt komponent eller instans
+    console.log(`[VARIABLE_ANALYSIS_DEBUG] Analyserer enkelt komponent/instans`);
     await analyzeNodeForVariables(selectedNode as SceneNode, localVariableMap, localVariableIdSet, variableMatches);
   }
+
+  console.log(`[VARIABLE_ANALYSIS_DEBUG] Analyse fullført. Totalt ${variableMatches.length} variabler funnet`);
 
   // Send resultat til UI
   const result: any = {
@@ -131,6 +141,7 @@ async function analyzeComponentSetForVariables(
   // Analyser hver variant i ComponentSet
   for (const variant of componentSet.children) {
     if (variant.type === 'COMPONENT') {
+      console.log(`[VARIABLE_ANALYSIS_DEBUG] Analyserer variant: ${variant.name}`);
       await analyzeNodeForVariables(variant, localVariableMap, localVariableIdSet, matches, variant.name);
     }
   }
@@ -159,9 +170,11 @@ async function analyzeColorVariables(
         const currentVariable = await figma.variables.getVariableByIdAsync(fillRef.id);
         
         if (currentVariable) {
-          // Hopp over hvis allerede koblet til lokal variabel (samme id)
-          if (localVariableIdSet.has(currentVariable.id)) continue;
+          // Søk etter lokal variabel med samme navn
           const localVariable = localVariableMap.get(currentVariable.name);
+          
+          // Hopp over hvis allerede koblet til lokal variabel (samme id)
+          if (localVariable && localVariable.id === currentVariable.id) continue;
           
           matches.push({
             field: `fills[${i}]`,
@@ -177,7 +190,8 @@ async function analyzeColorVariables(
             } : null,
             nodeName: node.name,
             nodeType: node.type,
-            variantName: variantName
+            variantName: variantName,
+            nodeId: node.id
           });
         }
       }
@@ -193,8 +207,10 @@ async function analyzeColorVariables(
         const currentVariable = await figma.variables.getVariableByIdAsync(strokeRef.id);
         
         if (currentVariable) {
-          if (localVariableIdSet.has(currentVariable.id)) continue;
           const localVariable = localVariableMap.get(currentVariable.name);
+          
+          // Hopp over hvis allerede koblet til lokal variabel (samme id)
+          if (localVariable && localVariable.id === currentVariable.id) continue;
           
           matches.push({
             field: `strokes[${i}]`,
@@ -210,7 +226,8 @@ async function analyzeColorVariables(
             } : null,
             nodeName: node.name,
             nodeType: node.type,
-            variantName: variantName
+            variantName: variantName,
+            nodeId: node.id
           });
         }
       }
@@ -244,7 +261,8 @@ async function analyzeColorVariables(
               } : null,
               nodeName: node.name,
               nodeType: node.type,
-              variantName: variantName
+              variantName: variantName,
+              nodeId: node.id
             });
           }
         }
@@ -279,7 +297,8 @@ async function analyzeColorVariables(
               } : null,
               nodeName: node.name,
               nodeType: node.type,
-              variantName: variantName
+              variantName: variantName,
+              nodeId: node.id
             });
           }
         }
@@ -296,6 +315,8 @@ async function analyzeNodeForVariables(
   matches: VariableMatch[],
   variantName?: string
 ) {
+  console.log(`[VARIABLE_ANALYSIS_DEBUG] Analyserer node: ${node.name} (${node.type})${variantName ? ` i variant: ${variantName}` : ''}`);
+  
   // Analyser boundVariables
   if ('boundVariables' in node && node.boundVariables) {
     // Debug: Log boundVariables for å se strukturen
@@ -306,10 +327,22 @@ async function analyzeNodeForVariables(
         const currentVariable = await figma.variables.getVariableByIdAsync((variableRef as any).id);
         
         if (currentVariable) {
+          console.log(`[VARIABLE_ANALYSIS_DEBUG] Fant variabel: ${currentVariable.name} (${currentVariable.id}) på felt: ${field}`);
+          
           // Hopp over hvis allerede lokal (id finnes i lokale)
-          if (localVariableIdSet.has(currentVariable.id)) continue;
+          if (localVariableIdSet.has(currentVariable.id)) {
+            console.log(`[VARIABLE_ANALYSIS_DEBUG] HOPPER OVER: Variabel ${currentVariable.name} er allerede lokal`);
+            continue;
+          }
+          
           // Søk etter lokal variabel med samme navn
           const localVariable = localVariableMap.get(currentVariable.name);
+          
+          if (localVariable) {
+            console.log(`[VARIABLE_ANALYSIS_DEBUG] Fant lokal match: ${localVariable.name} (${localVariable.id})`);
+          } else {
+            console.log(`[VARIABLE_ANALYSIS_DEBUG] Ingen lokal match funnet for: ${currentVariable.name}`);
+          }
           
           matches.push({
             field: field,
@@ -325,7 +358,8 @@ async function analyzeNodeForVariables(
             } : null,
             nodeName: node.name,
             nodeType: node.type,
-            variantName: variantName
+            variantName: variantName,
+            nodeId: node.id
           });
         }
       }
@@ -335,22 +369,28 @@ async function analyzeNodeForVariables(
   // Spesiell håndtering for fargevariabler i fills og strokes
   await analyzeColorVariables(node, localVariableMap, localVariableIdSet, matches, variantName);
 
-  // Fjern duplikater basert på variabel-ID
+  // Fjern duplikater basert på variabel-ID, men inkluder variantName i nøkkelen
+  console.log(`[VARIABLE_ANALYSIS_DEBUG] Før deduplisering: ${matches.length} matches`);
   const uniqueMatches: VariableMatch[] = [];
   const seenVariableIds = new Set<string>();
   
   for (const match of matches) {
     if (match.currentVariable) {
-      const key = `${match.currentVariable.id}-${match.nodeName}-${match.field}`;
+      const key = `${match.currentVariable.id}-${match.nodeId}-${match.field}-${match.variantName || 'default'}`;
       if (!seenVariableIds.has(key)) {
         seenVariableIds.add(key);
         uniqueMatches.push(match);
+        console.log(`[VARIABLE_ANALYSIS_DEBUG] Beholder match: ${match.currentVariable.name} på ${match.nodeName} (${match.variantName || 'default'}) - nodeId: ${match.nodeId}`);
+      } else {
+        console.log(`[VARIABLE_ANALYSIS_DEBUG] Fjerner duplikat: ${match.currentVariable.name} på ${match.nodeName} (${match.variantName || 'default'}) - nodeId: ${match.nodeId}`);
       }
     } else {
       // Hvis ingen currentVariable, legg til uansett
       uniqueMatches.push(match);
     }
   }
+  
+  console.log(`[VARIABLE_ANALYSIS_DEBUG] Etter deduplisering: ${uniqueMatches.length} matches`);
   
   // Erstatt matches med dedupliserte matches
   matches.length = 0;
@@ -370,46 +410,90 @@ async function swapVariables(variableMatches: VariableMatch[]) {
   let errorCount = 0;
   const errors: string[] = [];
 
+  console.log(`[VARIABLE_SWAP_DEBUG] Starter bytting av ${variableMatches.length} variabler`);
+
   for (const match of variableMatches) {
+    console.log(`[VARIABLE_SWAP_DEBUG] Behandler variabel: ${match.currentVariable?.name} (${match.currentVariable?.id}) på felt: ${match.field}`);
+    
     if (!match.localVariable) {
       errorCount++;
-      errors.push(`Ingen lokal variabel funnet for: ${match.currentVariable?.name}`);
+      const errorMsg = `Ingen lokal variabel funnet for: ${match.currentVariable?.name}`;
+      errors.push(errorMsg);
+      console.log(`[VARIABLE_SWAP_DEBUG] FEIL: ${errorMsg}`);
       continue;
     }
 
     try {
       // Finn noden som har denne variabelen
+      console.log(`[VARIABLE_SWAP_DEBUG] Søker etter node med variabel ID: ${match.currentVariable?.id}`);
       const node = await findNodeWithVariable(match.currentVariable?.id || '');
       
       if (!node) {
         errorCount++;
-        errors.push(`Kunne ikke finne node for variabel: ${match.currentVariable?.name}`);
+        const errorMsg = `Kunne ikke finne node for variabel: ${match.currentVariable?.name}`;
+        errors.push(errorMsg);
+        console.log(`[VARIABLE_SWAP_DEBUG] FEIL: ${errorMsg}`);
         continue;
       }
+
+      console.log(`[VARIABLE_SWAP_DEBUG] Fant node: ${node.name} (${node.type})`);
 
       // Hent den lokale variabelen
       const localVariable = await figma.variables.getVariableByIdAsync(match.localVariable.id);
       
       if (!localVariable) {
         errorCount++;
-        errors.push(`Kunne ikke hente lokal variabel: ${match.localVariable.name}`);
+        const errorMsg = `Kunne ikke hente lokal variabel: ${match.localVariable.name}`;
+        errors.push(errorMsg);
+        console.log(`[VARIABLE_SWAP_DEBUG] FEIL: ${errorMsg}`);
         continue;
       }
+
+      console.log(`[VARIABLE_SWAP_DEBUG] Lokal variabel: ${localVariable.name} (${localVariable.id})`);
 
       // Skipp hvis allerede samme id (allerede koblet til lokal variabel)
       if (match.currentVariable && localVariable.id === match.currentVariable.id) {
+        console.log(`[VARIABLE_SWAP_DEBUG] HOPPER OVER: Variabel allerede koblet til lokal (samme ID)`);
         continue;
       }
 
+      // Sjekk om variabelen faktisk er koblet til noden før bytting
+      console.log(`[VARIABLE_SWAP_DEBUG] Sjekker om variabel er koblet til node...`);
+      const isCurrentlyBound = await checkIfVariableIsBoundToNode(node, match.currentVariable?.id || '', match.field);
+      console.log(`[VARIABLE_SWAP_DEBUG] Variabel koblet til node: ${isCurrentlyBound}`);
+
+      if (!isCurrentlyBound) {
+        console.log(`[VARIABLE_SWAP_DEBUG] ADVARSEL: Variabel ${match.currentVariable?.name} er ikke lenger koblet til node ${node.name}`);
+      }
+
       // Bytt variabelen
+      console.log(`[VARIABLE_SWAP_DEBUG] Bytter variabel på node...`);
       await swapVariableOnNode(node, match.field, localVariable);
-      successCount++;
+      
+      // Verifiser at byttet faktisk skjedde
+      console.log(`[VARIABLE_SWAP_DEBUG] Verifiserer bytting...`);
+      const isNowBound = await checkIfVariableIsBoundToNode(node, localVariable.id, match.field);
+      console.log(`[VARIABLE_SWAP_DEBUG] Ny variabel koblet til node: ${isNowBound}`);
+      
+      if (isNowBound) {
+        successCount++;
+        console.log(`[VARIABLE_SWAP_DEBUG] SUKSESS: Variabel byttet fra ${match.currentVariable?.name} til ${localVariable.name}`);
+      } else {
+        errorCount++;
+        const errorMsg = `Bytting feilet for ${match.currentVariable?.name}: Variabel ble ikke koblet til node`;
+        errors.push(errorMsg);
+        console.log(`[VARIABLE_SWAP_DEBUG] FEIL: ${errorMsg}`);
+      }
 
     } catch (error) {
       errorCount++;
-      errors.push(`Feil ved bytting av ${match.currentVariable?.name}: ${error}`);
+      const errorMsg = `Feil ved bytting av ${match.currentVariable?.name}: ${error}`;
+      errors.push(errorMsg);
+      console.log(`[VARIABLE_SWAP_DEBUG] FEIL: ${errorMsg}`);
     }
   }
+
+  console.log(`[VARIABLE_SWAP_DEBUG] Bytting fullført: ${successCount} suksess, ${errorCount} feil`);
 
   // Send resultat til UI
   figma.ui.postMessage({
@@ -475,6 +559,27 @@ function findNodeWithVariableRecursive(node: SceneNode, variableId: string): Sce
   return null;
 }
 
+// Hjelpefunksjon for å sjekke om en variabel er koblet til en node
+async function checkIfVariableIsBoundToNode(node: SceneNode, variableId: string, field: string): Promise<boolean> {
+  // Sjekk boundVariables direkte
+  if ('boundVariables' in node && node.boundVariables) {
+    for (const [boundField, variableRef] of Object.entries(node.boundVariables)) {
+      if (boundField === field && variableRef && typeof variableRef === 'object' && 'id' in variableRef) {
+        if ((variableRef as any).id === variableId) {
+          return true;
+        }
+      }
+    }
+  }
+
+  // Spesiell sjekk for fargevariabler
+  if (field.startsWith('fills[') || field.startsWith('strokes[')) {
+    return hasColorVariable(node, variableId);
+  }
+
+  return false;
+}
+
 // Hjelpefunksjon for å sjekke om node har fargevariabel
 function hasColorVariable(node: SceneNode, variableId: string): boolean {
   // Sjekk boundVariables for fills og strokes (direkte binding)
@@ -533,21 +638,26 @@ function hasColorVariable(node: SceneNode, variableId: string): boolean {
 
 // Bytt variabel på en node
 async function swapVariableOnNode(node: SceneNode, field: string, newVariable: Variable) {
+  console.log(`[VARIABLE_SWAP_DEBUG] swapVariableOnNode: ${node.name}, felt: ${field}, ny variabel: ${newVariable.name}`);
+  
   if (!('boundVariables' in node)) {
     throw new Error('Node støtter ikke variabel-binding');
   }
 
   // Spesiell håndtering for ulike felttyper
   if (field === 'fills' || field === 'strokes') {
+    console.log(`[VARIABLE_SWAP_DEBUG] Håndterer ${field} array`);
     // For fills og strokes må vi håndtere paint-objekter
     const paints = field === 'fills' ? (node as any).fills : (node as any).strokes;
     
     if (Array.isArray(paints)) {
+      console.log(`[VARIABLE_SWAP_DEBUG] ${field} array har ${paints.length} elementer`);
       // Lag en kopi av paints-arrayen før endring
       const paintsCopy = [...paints];
       for (let i = 0; i < paintsCopy.length; i++) {
         const paint = paintsCopy[i];
         if (paint && paint.type === 'SOLID') {
+          console.log(`[VARIABLE_SWAP_DEBUG] Setter variabel på ${field}[${i}]`);
           // Sett variabel på color-egenskapen til paint
           const newPaint = figma.variables.setBoundVariableForPaint(paint, 'color', newVariable);
           paintsCopy[i] = newPaint;
@@ -559,14 +669,17 @@ async function swapVariableOnNode(node: SceneNode, field: string, newVariable: V
       } else {
         (node as any).strokes = paintsCopy;
       }
+      console.log(`[VARIABLE_SWAP_DEBUG] ${field} array oppdatert`);
     }
   } else if (field.startsWith('fills[') && field.endsWith(']')) {
     // Håndter fargevariabler i fills (direkte binding)
+    console.log(`[VARIABLE_SWAP_DEBUG] Håndterer direkte fills binding: ${field}`);
     const indexMatch = field.match(/fills\[(\d+)\]/);
     if (indexMatch) {
       const index = parseInt(indexMatch[1]);
       const fills = (node as any).fills;
       if (Array.isArray(fills) && fills[index]) {
+        console.log(`[VARIABLE_SWAP_DEBUG] Setter variabel på fills[${index}]`);
         // Lag en kopi av fills-arrayen før endring
         const fillsCopy = [...fills];
         // For direkte binding, erstatt hele fill-objektet
@@ -574,15 +687,18 @@ async function swapVariableOnNode(node: SceneNode, field: string, newVariable: V
         fillsCopy[index] = newFill;
         // Sett den nye arrayen
         (node as any).fills = fillsCopy;
+        console.log(`[VARIABLE_SWAP_DEBUG] fills[${index}] oppdatert`);
       }
     }
   } else if (field.startsWith('strokes[') && field.endsWith(']')) {
     // Håndter fargevariabler i strokes (direkte binding)
+    console.log(`[VARIABLE_SWAP_DEBUG] Håndterer direkte strokes binding: ${field}`);
     const indexMatch = field.match(/strokes\[(\d+)\]/);
     if (indexMatch) {
       const index = parseInt(indexMatch[1]);
       const strokes = (node as any).strokes;
       if (Array.isArray(strokes) && strokes[index]) {
+        console.log(`[VARIABLE_SWAP_DEBUG] Setter variabel på strokes[${index}]`);
         // Lag en kopi av strokes-arrayen før endring
         const strokesCopy = [...strokes];
         // For direkte binding, erstatt hele stroke-objektet
@@ -590,40 +706,49 @@ async function swapVariableOnNode(node: SceneNode, field: string, newVariable: V
         strokesCopy[index] = newStroke;
         // Sett den nye arrayen
         (node as any).strokes = strokesCopy;
+        console.log(`[VARIABLE_SWAP_DEBUG] strokes[${index}] oppdatert`);
       }
     }
   } else if (field.startsWith('fills[') && field.endsWith('].color')) {
     // Håndter spesifikke fargevariabler i fills (indirekte binding)
+    console.log(`[VARIABLE_SWAP_DEBUG] Håndterer indirekte fills binding: ${field}`);
     const indexMatch = field.match(/fills\[(\d+)\]\.color/);
     if (indexMatch) {
       const index = parseInt(indexMatch[1]);
       const fills = (node as any).fills;
       if (Array.isArray(fills) && fills[index] && fills[index].type === 'SOLID') {
+        console.log(`[VARIABLE_SWAP_DEBUG] Setter variabel på fills[${index}].color`);
         // Lag en kopi av fills-arrayen før endring
         const fillsCopy = [...fills];
         const newPaint = figma.variables.setBoundVariableForPaint(fillsCopy[index], 'color', newVariable);
         fillsCopy[index] = newPaint;
         // Sett den nye arrayen
         (node as any).fills = fillsCopy;
+        console.log(`[VARIABLE_SWAP_DEBUG] fills[${index}].color oppdatert`);
       }
     }
   } else if (field.startsWith('strokes[') && field.endsWith('].color')) {
     // Håndter spesifikke fargevariabler i strokes (indirekte binding)
+    console.log(`[VARIABLE_SWAP_DEBUG] Håndterer indirekte strokes binding: ${field}`);
     const indexMatch = field.match(/strokes\[(\d+)\]\.color/);
     if (indexMatch) {
       const index = parseInt(indexMatch[1]);
       const strokes = (node as any).strokes;
       if (Array.isArray(strokes) && strokes[index] && strokes[index].type === 'SOLID') {
+        console.log(`[VARIABLE_SWAP_DEBUG] Setter variabel på strokes[${index}].color`);
         // Lag en kopi av strokes-arrayen før endring
         const strokesCopy = [...strokes];
         const newPaint = figma.variables.setBoundVariableForPaint(strokesCopy[index], 'color', newVariable);
         strokesCopy[index] = newPaint;
         // Sett den nye arrayen
         (node as any).strokes = strokesCopy;
+        console.log(`[VARIABLE_SWAP_DEBUG] strokes[${index}].color oppdatert`);
       }
     }
   } else {
     // For andre felttyper, bruk setBoundVariable
+    console.log(`[VARIABLE_SWAP_DEBUG] Bruker setBoundVariable for felt: ${field}`);
     node.setBoundVariable(field as VariableBindableNodeField, newVariable);
+    console.log(`[VARIABLE_SWAP_DEBUG] setBoundVariable fullført for ${field}`);
   }
 }
