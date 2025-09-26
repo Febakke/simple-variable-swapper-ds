@@ -1,5 +1,5 @@
 {
-  "name": "Simple-variable-swapper",
+  "name": "Variable Swapper",
   "id": "1552933626523757365",
   "api": "1.0.0",
   "main": "code.js",
@@ -14,5 +14,8 @@
     "allowedDomains": [
       "none"
     ]
-  }
+  },
+  "permissions": [
+    "currentuser"
+  ]
 }

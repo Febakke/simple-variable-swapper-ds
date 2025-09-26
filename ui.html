@@ -1,17 +1,505 @@
-<h2>Rectangle Creator</h2>
-<p>Count: <input id="count" type="number" value="5"></p>
-<button id="create">Create</button>
-<button id="cancel">Cancel</button>
-<script>
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Variable Swapper</title>
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>Variable Swapper</h1>
+      <p class="subtitle">Bytt variabler på importerte komponenter til lokale variabler</p>
+    </header>
 
-document.getElementById('create').onclick = () => {
-  const textbox = document.getElementById('count');
-  const count = parseInt(textbox.value, 10);
-  parent.postMessage({ pluginMessage: { type: 'create-shapes', count } }, '*')
-}
+    <div id="loading" class="loading hidden">
+      <div class="spinner"></div>
+      <p>Analyserer komponent...</p>
+    </div>
 
-document.getElementById('cancel').onclick = () => {
-  parent.postMessage({ pluginMessage: { type: 'cancel' } }, '*')
-}
+    <div id="error" class="error hidden">
+      <div class="error-icon">⚠️</div>
+      <p id="error-message"></p>
+    </div>
 
-</script>
+    <div id="main-content" class="main-content">
+      <div class="action-section">
+        <button id="analyze-btn" class="button primary">
+          <span class="button-icon">🔍</span>
+          Analyser valgt komponent
+        </button>
+      </div>
+
+      <div id="results" class="results hidden">
+        <div class="component-info">
+          <h2 id="component-name"></h2>
+          <span id="component-type" class="component-type"></span>
+          <div id="component-details" class="component-details hidden"></div>
+        </div>
+
+        <div class="variables-section">
+          <h3>Funnet variabler</h3>
+          <div id="variables-list" class="variables-list"></div>
+        </div>
+
+        <div class="actions">
+          <button id="swap-btn" class="button primary" disabled>
+            <span class="button-icon">🔄</span>
+            Bytt alle variabler
+          </button>
+          <button id="cancel-btn" class="button secondary">
+            Avbryt
+          </button>
+        </div>
+      </div>
+
+      <div id="success" class="success hidden">
+        <div class="success-icon">✅</div>
+        <h3>Variabler byttet!</h3>
+        <p id="success-message"></p>
+        <button id="close-btn" class="button primary">Lukk</button>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 0.875rem;
+      line-height: 1.4;
+      color: var(--figma-color-text);
+      background: var(--figma-color-bg);
+    }
+
+    .container {
+      padding: 1rem;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header {
+      margin-bottom: 1.5rem;
+    }
+
+    .header h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+      color: var(--figma-color-text);
+    }
+
+    .subtitle {
+      color: var(--figma-color-text-secondary);
+      font-size: 0.8125rem;
+    }
+
+    .loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      text-align: center;
+    }
+
+    .spinner {
+      width: 2rem;
+      height: 2rem;
+      border: 2px solid var(--figma-color-border);
+      border-top: 2px solid var(--figma-color-text);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 1rem;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .error {
+      display: flex;
+      align-items: center;
+      padding: 1rem;
+      background: var(--figma-color-bg-danger);
+      border: 1px solid var(--figma-color-border-danger);
+      border-radius: 0.375rem;
+      margin-bottom: 1rem;
+    }
+
+    .error-icon {
+      font-size: 1.25rem;
+      margin-right: 0.75rem;
+    }
+
+    .main-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .action-section {
+      margin-bottom: 1.5rem;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.5rem 1rem;
+      border: 1px solid var(--figma-color-border);
+      border-radius: 0.375rem;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-decoration: none;
+      background: var(--figma-color-bg);
+      color: var(--figma-color-text);
+      width: 100%;
+    }
+
+    .button:hover:not(:disabled) {
+      background: var(--figma-color-bg-hover);
+    }
+
+    .button:active:not(:disabled) {
+      background: var(--figma-color-bg-pressed);
+    }
+
+    .button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .button.primary {
+      background: var(--figma-color-bg-brand);
+      color: var(--figma-color-text-onbrand);
+      border-color: var(--figma-color-border-brand);
+    }
+
+    .button.primary:hover:not(:disabled) {
+      background: var(--figma-color-bg-brand-hover);
+    }
+
+    .button.secondary {
+      background: var(--figma-color-bg-secondary);
+      color: var(--figma-color-text-secondary);
+    }
+
+    .button-icon {
+      margin-right: 0.5rem;
+    }
+
+    .results {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .component-info {
+      margin-bottom: 1.5rem;
+      padding: 1rem;
+      background: var(--figma-color-bg-secondary);
+      border-radius: 0.375rem;
+    }
+
+    .component-info h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+
+    .component-type {
+      display: inline-block;
+      padding: 0.125rem 0.5rem;
+      background: var(--figma-color-bg-tertiary);
+      border-radius: 0.25rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+      text-transform: uppercase;
+      color: var(--figma-color-text-secondary);
+    }
+
+    .component-details {
+      margin-top: 0.5rem;
+      padding: 0.5rem;
+      background: var(--figma-color-bg-tertiary);
+      border-radius: 0.25rem;
+      font-size: 0.75rem;
+      color: var(--figma-color-text-secondary);
+    }
+
+    .variables-section {
+      flex: 1;
+      margin-bottom: 1.5rem;
+    }
+
+    .variables-section h3 {
+      font-size: 0.875rem;
+      font-weight: 600;
+      margin-bottom: 0.75rem;
+    }
+
+    .variables-list {
+      max-height: 12rem;
+      overflow-y: auto;
+      border: 1px solid var(--figma-color-border);
+      border-radius: 0.375rem;
+    }
+
+    .variable-item {
+      display: flex;
+      align-items: center;
+      padding: 0.75rem;
+      border-bottom: 1px solid var(--figma-color-border);
+    }
+
+    .variable-item:last-child {
+      border-bottom: none;
+    }
+
+    .variable-info {
+      flex: 1;
+    }
+
+    .variable-field {
+      font-weight: 500;
+      margin-bottom: 0.25rem;
+    }
+
+    .variable-variant {
+      font-size: 0.6875rem;
+      color: var(--figma-color-text-tertiary);
+      margin-bottom: 0.25rem;
+      font-style: italic;
+    }
+
+    .variable-names {
+      display: flex;
+      align-items: center;
+      font-size: 0.75rem;
+      color: var(--figma-color-text-secondary);
+    }
+
+    .variable-arrow {
+      margin: 0 0.5rem;
+      color: var(--figma-color-text-tertiary);
+    }
+
+    .variable-status {
+      margin-left: 0.75rem;
+    }
+
+    .status-found {
+      color: var(--figma-color-text-success);
+    }
+
+    .status-missing {
+      color: var(--figma-color-text-danger);
+    }
+
+    .actions {
+      display: flex;
+      gap: 0.75rem;
+    }
+
+    .actions .button {
+      flex: 1;
+    }
+
+    .success {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      text-align: center;
+    }
+
+    .success-icon {
+      font-size: 2rem;
+      margin-bottom: 1rem;
+    }
+
+    .success h3 {
+      font-size: 1.125rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+
+    .success p {
+      color: var(--figma-color-text-secondary);
+      margin-bottom: 1.5rem;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+  </style>
+
+  <script>
+    let variableMatches = [];
+
+    // UI elementer
+    const loadingEl = document.getElementById('loading');
+    const errorEl = document.getElementById('error');
+    const errorMessageEl = document.getElementById('error-message');
+    const mainContentEl = document.getElementById('main-content');
+    const resultsEl = document.getElementById('results');
+    const successEl = document.getElementById('success');
+    const successMessageEl = document.getElementById('success-message');
+    const componentNameEl = document.getElementById('component-name');
+    const componentTypeEl = document.getElementById('component-type');
+    const componentDetailsEl = document.getElementById('component-details');
+    const variablesListEl = document.getElementById('variables-list');
+    const swapBtnEl = document.getElementById('swap-btn');
+
+    // Knapper
+    const analyzeBtnEl = document.getElementById('analyze-btn');
+    const cancelBtnEl = document.getElementById('cancel-btn');
+    const closeBtnEl = document.getElementById('close-btn');
+
+    // Event listeners
+    analyzeBtnEl.addEventListener('click', analyzeSelection);
+    swapBtnEl.addEventListener('click', swapVariables);
+    cancelBtnEl.addEventListener('click', cancel);
+    closeBtnEl.addEventListener('click', cancel);
+
+    // Lytt til meldinger fra plugin
+    window.onmessage = (event) => {
+      const msg = event.data.pluginMessage;
+      
+      if (msg.type === 'error') {
+        showError(msg.message);
+      } else if (msg.type === 'analysis-complete') {
+        showResults(msg);
+      } else if (msg.type === 'swap-complete') {
+        showSuccess(msg);
+      }
+    };
+
+    function analyzeSelection() {
+      showLoading();
+      parent.postMessage({ pluginMessage: { type: 'analyze-selection' } }, '*');
+    }
+
+    function swapVariables() {
+      showLoading();
+      parent.postMessage({ 
+        pluginMessage: { 
+          type: 'swap-variables', 
+          variableMatches: variableMatches 
+        } 
+      }, '*');
+    }
+
+    function cancel() {
+      parent.postMessage({ pluginMessage: { type: 'cancel' } }, '*');
+    }
+
+    function showLoading() {
+      hideAll();
+      loadingEl.classList.remove('hidden');
+    }
+
+    function showError(message) {
+      hideAll();
+      errorMessageEl.textContent = message;
+      errorEl.classList.remove('hidden');
+    }
+
+    function showResults(data) {
+      hideAll();
+      
+      variableMatches = data.variableMatches || [];
+      componentNameEl.textContent = data.componentName || 'Ukjent komponent';
+      componentTypeEl.textContent = data.componentType || 'UKJENT';
+      
+      // Vis ekstra detaljer for ComponentSet
+      if (data.componentType === 'COMPONENT_SET') {
+        const variantCount = data.variantCount || 0;
+        componentDetailsEl.innerHTML = `Komponent-set med ${variantCount} variant${variantCount !== 1 ? 'er' : ''}`;
+        componentDetailsEl.classList.remove('hidden');
+      } else {
+        componentDetailsEl.classList.add('hidden');
+      }
+      
+      renderVariablesList(variableMatches);
+      
+      // Aktiver swap-knapp hvis det finnes matchende variabler
+      const hasMatches = variableMatches.some(match => match.localVariable);
+      swapBtnEl.disabled = !hasMatches;
+      
+      resultsEl.classList.remove('hidden');
+    }
+
+    function showSuccess(data) {
+      hideAll();
+      
+      const { successCount, errorCount, errors } = data;
+      let message = `Byttet ${successCount} variabel${successCount !== 1 ? 'er' : ''}.`;
+      
+      if (errorCount > 0) {
+        message += ` ${errorCount} feil oppstod.`;
+        if (errors.length > 0) {
+          message += `\n\nFeil:\n${errors.join('\n')}`;
+        }
+      }
+      
+      successMessageEl.textContent = message;
+      successEl.classList.remove('hidden');
+    }
+
+    function renderVariablesList(matches) {
+      variablesListEl.innerHTML = '';
+      
+      if (matches.length === 0) {
+        variablesListEl.innerHTML = '<div class="variable-item"><p>Ingen variabler funnet i komponenten.</p></div>';
+        return;
+      }
+      
+      matches.forEach(match => {
+        const item = document.createElement('div');
+        item.className = 'variable-item';
+        
+        const hasLocalMatch = match.localVariable !== null;
+        const statusClass = hasLocalMatch ? 'status-found' : 'status-missing';
+        const statusText = hasLocalMatch ? '✓' : '✗';
+        
+        const variantInfo = match.variantName ? `<div class="variable-variant">Variant: ${match.variantName}</div>` : '';
+        
+        item.innerHTML = `
+          <div class="variable-info">
+            <div class="variable-field">${match.field}</div>
+            ${variantInfo}
+            <div class="variable-names">
+              <span>${match.currentVariable?.name || 'Ukjent'}</span>
+              <span class="variable-arrow">→</span>
+              <span>${match.localVariable?.name || 'Ikke funnet'}</span>
+            </div>
+          </div>
+          <div class="variable-status ${statusClass}">
+            ${statusText}
+          </div>
+        `;
+        
+        variablesListEl.appendChild(item);
+      });
+    }
+
+    function hideAll() {
+      loadingEl.classList.add('hidden');
+      errorEl.classList.add('hidden');
+      resultsEl.classList.add('hidden');
+      successEl.classList.add('hidden');
+    }
+  </script>
+</body>
+</html>
