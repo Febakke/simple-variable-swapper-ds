@@ -1,40 +1,63 @@
-Below are the steps to get your plugin running. You can also find instructions at:
+# Variable Swapper BETA 🔄
 
-  https://www.figma.com/plugin-docs/plugin-quickstart-guide/
+Hvis du har importert komponenter fra et eksternt bibliotek og ønsker å koble variablene til ditt lokale bibliotek i stedet, kan du bruke denne pluginen til å automatisk bytte variabler basert på navn.
 
-This plugin template uses Typescript and NPM, two standard tools in creating JavaScript applications.
+⚠️ Denne pluginen fungerer med alle typer variabler (farger, størrelser, typografi, border-radius, border-width) og text styles. Den matcher variabler basert på navn mellom eksterne og lokale biblioteker.
 
-First, download Node.js which comes with NPM. This will allow you to install TypeScript and other
-libraries. You can find the download link here:
+## Hvordan bruke
 
-  https://nodejs.org/en/download/
+1. **Åpne pluginen** og velg en komponent eller komponent-set du vil analysere
+2. **Klikk "Analyser valgt komponent"** for å finne variabler som kan byttes
+3. **Se oppsummeringen** som viser hvor mange variabler som kan byttes til lokale variabler
+4. **Klikk "Bytt alle variabler"** for å koble til lokale variabler
+5. 🎉 Nå er variablene koblet til ditt lokale bibliotek!
 
-Next, install TypeScript using the command:
+## Funksjoner
 
-  npm install -g typescript
+* **Støtter alle variabeltyper** - Farger, størrelser, typografi, border-radius, border-width
+* **Text style støtte** - Bytter også text styles til lokale versjoner
+* **ComponentSet støtte** - Analyserer alle varianter i en komponent-set
+* **Smart matching** - Matcher variabler basert på navn mellom biblioteker
+* **Enkel brukeropplevelse** - Kun to klikk for å bytte alle variabler
 
-Finally, in the directory of your plugin, get the latest type definitions for the plugin API by running:
+## Hvordan installere
 
-  npm install --save-dev @figma/plugin-typings
+1. Last ned denne repo-en
+2. Bruk "Import plugin from manifest..." i Figma og velg `manifest.json`
+3. Nå kan du finne pluginen i Figma under Plugins
 
-If you are familiar with JavaScript, TypeScript will look very familiar. In fact, valid JavaScript code
-is already valid Typescript code.
+## Krav
 
-TypeScript adds type annotations to variables. This allows code editors such as Visual Studio Code
-to provide information about the Figma API while you are writing code, as well as help catch bugs
-you previously didn't notice.
+Din Figma-fil må ha:
 
-For more information, visit https://www.typescriptlang.org/
+* **Lokale variabler** har samme struktur som designsystemets Figma fil
+* **Lokale text styles** har samme navn som i vår
+* **Komponenter** som bruker variabler fra eksterne biblioteker
 
-Using TypeScript requires a compiler to convert TypeScript (code.ts) into JavaScript (code.js)
-for the browser to run.
+## Hvordan det fungerer
 
-We recommend writing TypeScript code using Visual Studio code:
+1. **Analyse**: Pluginen går gjennom alle noder i den valgte komponenten og finner variabler som er koblet til eksterne biblioteker
+2. **Matching**: Den matcher disse variablene med lokale variabler basert på navn
+3. **Bytting**: Den bytter koblingene fra eksterne til lokale variabler
 
-1. Download Visual Studio Code if you haven't already: https://code.visualstudio.com/.
-2. Open this directory in Visual Studio Code.
-3. Compile TypeScript to JavaScript: Run the "Terminal > Run Build Task..." menu item,
-    then select "npm: watch". You will have to do this again every time
-    you reopen Visual Studio Code.
+## Støttede variabeltyper
 
-That's it! Visual Studio Code will regenerate the JavaScript file every time you save.
+* **Farger** - `fills`, `strokes`, `fills[0].color`, `strokes[0].color`
+* **Størrelser** - `width`, `height`, `paddingTop`, `paddingBottom`, etc.
+* **Typografi** - `fontSize`, `fontFamily`, `fontWeight`, `lineHeight`, etc.
+* **Border** - `cornerRadius`, `strokeWeight`
+* **Text styles** - Komplette text style koblinger
+
+## Feilsøking
+
+Hvis pluginen ikke finner noen variabler å bytte:
+
+* Sjekk at du har lokale variabler med samme navn
+* Sjekk at komponenten faktisk bruker variabler (ikke hardkodede verdier)
+* Sjekk at variablene kommer fra et eksternt bibliotek
+
+Gi beskjed hvis du finner bugs eller andre problemer!
+
+## Om
+
+En Figma plugin for å automatisk bytte variabler på importerte komponenter til lokale variabler basert på navn-matching.
