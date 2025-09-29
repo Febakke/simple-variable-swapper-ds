@@ -7,7 +7,7 @@
 <body>
   <div class="container">
     <header class="header">
-      <h1>Variable Swapper</h1>
+      <h1>Variable Swapper BETA</h1>
       <p class="subtitle">Bytt variabler på importerte komponenter til lokale variabler</p>
     </header>
 
@@ -36,18 +36,20 @@
           <div id="component-details" class="component-details hidden"></div>
         </div>
 
-        <div class="variables-section">
-          <h3>Funnet variabler</h3>
-          <div id="variables-list" class="variables-list"></div>
+        <div class="summary-section">
+          <div class="summary-card">
+            <div class="summary-icon">📊</div>
+            <div class="summary-content">
+              <h3>Analyse fullført</h3>
+              <p id="summary-text">Fant <span id="variable-count">0</span> variabler som kan byttes til lokale variabler</p>
+            </div>
+          </div>
         </div>
 
         <div class="actions">
           <button id="swap-btn" class="button primary" disabled>
             <span class="button-icon">🔄</span>
             Bytt alle variabler
-          </button>
-          <button id="cancel-btn" class="button secondary">
-            Avbryt
           </button>
         </div>
       </div>
@@ -236,73 +238,38 @@
       color: var(--figma-color-text-secondary);
     }
 
-    .variables-section {
-      flex: 1;
+    .summary-section {
       margin-bottom: 1.5rem;
     }
 
-    .variables-section h3 {
-      font-size: 0.875rem;
-      font-weight: 600;
-      margin-bottom: 0.75rem;
-    }
-
-    .variables-list {
-      max-height: 12rem;
-      overflow-y: auto;
+    .summary-card {
+      display: flex;
+      align-items: center;
+      padding: 1rem;
+      background: var(--figma-color-bg-secondary);
       border: 1px solid var(--figma-color-border);
       border-radius: 0.375rem;
     }
 
-    .variable-item {
-      display: flex;
-      align-items: center;
-      padding: 0.75rem;
-      border-bottom: 1px solid var(--figma-color-border);
+    .summary-icon {
+      font-size: 1.5rem;
+      margin-right: 1rem;
     }
 
-    .variable-item:last-child {
-      border-bottom: none;
-    }
-
-    .variable-info {
-      flex: 1;
-    }
-
-    .variable-field {
-      font-weight: 500;
+    .summary-content h3 {
+      font-size: 0.875rem;
+      font-weight: 600;
       margin-bottom: 0.25rem;
     }
 
-    .variable-variant {
-      font-size: 0.6875rem;
-      color: var(--figma-color-text-tertiary);
-      margin-bottom: 0.25rem;
-      font-style: italic;
-    }
-
-    .variable-names {
-      display: flex;
-      align-items: center;
-      font-size: 0.75rem;
+    .summary-content p {
+      font-size: 0.8125rem;
       color: var(--figma-color-text-secondary);
     }
 
-    .variable-arrow {
-      margin: 0 0.5rem;
-      color: var(--figma-color-text-tertiary);
-    }
-
-    .variable-status {
-      margin-left: 0.75rem;
-    }
-
-    .status-found {
-      color: var(--figma-color-text-success);
-    }
-
-    .status-missing {
-      color: var(--figma-color-text-danger);
+    #variable-count {
+      font-weight: 600;
+      color: var(--figma-color-text);
     }
 
     .actions {
@@ -358,18 +325,16 @@
     const componentNameEl = document.getElementById('component-name');
     const componentTypeEl = document.getElementById('component-type');
     const componentDetailsEl = document.getElementById('component-details');
-    const variablesListEl = document.getElementById('variables-list');
+    const variableCountEl = document.getElementById('variable-count');
     const swapBtnEl = document.getElementById('swap-btn');
 
     // Knapper
     const analyzeBtnEl = document.getElementById('analyze-btn');
-    const cancelBtnEl = document.getElementById('cancel-btn');
     const closeBtnEl = document.getElementById('close-btn');
 
     // Event listeners
     analyzeBtnEl.addEventListener('click', analyzeSelection);
     swapBtnEl.addEventListener('click', swapVariables);
-    cancelBtnEl.addEventListener('click', cancel);
     closeBtnEl.addEventListener('click', cancel);
 
     // Lytt til meldinger fra plugin
@@ -431,13 +396,15 @@
         componentDetailsEl.classList.add('hidden');
       }
       
-      renderVariablesList(variableMatches);
+      // Tell antall variabler som kan byttes
+      const swappableCount = variableMatches.filter(match => 
+        match.localVariable !== null || match.localTextStyle !== null
+      ).length;
+      
+      variableCountEl.textContent = swappableCount;
       
       // Aktiver swap-knapp hvis det finnes matchende variabler eller text styles
-      const hasMatches = variableMatches.some(match => 
-        match.localVariable !== null || match.localTextStyle !== null
-      );
-      swapBtnEl.disabled = !hasMatches;
+      swapBtnEl.disabled = swappableCount === 0;
       
       resultsEl.classList.remove('hidden');
     }
@@ -459,64 +426,6 @@
       successEl.classList.remove('hidden');
     }
 
-    function renderVariablesList(matches) {
-      variablesListEl.innerHTML = '';
-      
-      if (matches.length === 0) {
-        variablesListEl.innerHTML = '<div class="variable-item"><p>Ingen variabler funnet i komponenten.</p></div>';
-        return;
-      }
-      
-      matches.forEach(match => {
-        const item = document.createElement('div');
-        item.className = 'variable-item';
-        
-        // Håndter text styles vs vanlige variabler
-        let hasLocalMatch, statusClass, statusText, variableNames;
-        
-        if (match.field === 'textStyleId') {
-          // Text style match
-          hasLocalMatch = match.localTextStyle !== null;
-          statusClass = hasLocalMatch ? 'status-found' : 'status-missing';
-          statusText = hasLocalMatch ? '✓' : '✗';
-          
-          variableNames = `
-            <span>${match.currentTextStyle?.name || 'Ukjent text style'}</span>
-            <span class="variable-arrow">→</span>
-            <span>${match.localTextStyle?.name || 'Ikke funnet'}</span>
-          `;
-        } else {
-          // Vanlig variabel match
-          hasLocalMatch = match.localVariable !== null;
-          statusClass = hasLocalMatch ? 'status-found' : 'status-missing';
-          statusText = hasLocalMatch ? '✓' : '✗';
-          
-          variableNames = `
-            <span>${match.currentVariable?.name || 'Ukjent'}</span>
-            <span class="variable-arrow">→</span>
-            <span>${match.localVariable?.name || 'Ikke funnet'}</span>
-          `;
-        }
-        
-        const variantInfo = match.variantName ? `<div class="variable-variant">Variant: ${match.variantName}</div>` : '';
-        const fieldLabel = match.field === 'textStyleId' ? 'Text Style' : match.field;
-        
-        item.innerHTML = `
-          <div class="variable-info">
-            <div class="variable-field">${fieldLabel}</div>
-            ${variantInfo}
-            <div class="variable-names">
-              ${variableNames}
-            </div>
-          </div>
-          <div class="variable-status ${statusClass}">
-            ${statusText}
-          </div>
-        `;
-        
-        variablesListEl.appendChild(item);
-      });
-    }
 
     function hideAll() {
       loadingEl.classList.add('hidden');
@@ -527,3 +436,4 @@
   </script>
 </body>
 </html>
+
