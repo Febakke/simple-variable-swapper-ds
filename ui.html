@@ -13,7 +13,7 @@
 
     <div id="loading" class="loading hidden">
       <div class="spinner"></div>
-      <p>Analyserer komponent...</p>
+      <p id="loading-text">Analyserer komponent...</p>
     </div>
 
     <div id="error" class="error hidden">
@@ -58,7 +58,6 @@
         <div class="success-icon">✅</div>
         <h3>Variabler byttet!</h3>
         <p id="success-message"></p>
-        <button id="close-btn" class="button primary">Lukk</button>
       </div>
     </div>
   </div>
@@ -327,15 +326,14 @@
     const componentDetailsEl = document.getElementById('component-details');
     const variableCountEl = document.getElementById('variable-count');
     const swapBtnEl = document.getElementById('swap-btn');
+    const loadingTextEl = document.getElementById('loading-text');
 
     // Knapper
     const analyzeBtnEl = document.getElementById('analyze-btn');
-    const closeBtnEl = document.getElementById('close-btn');
 
     // Event listeners
     analyzeBtnEl.addEventListener('click', analyzeSelection);
     swapBtnEl.addEventListener('click', swapVariables);
-    closeBtnEl.addEventListener('click', cancel);
 
     // Lytt til meldinger fra plugin
     window.onmessage = (event) => {
@@ -351,12 +349,12 @@
     };
 
     function analyzeSelection() {
-      showLoading();
+      showLoading('Analyserer komponent...');
       parent.postMessage({ pluginMessage: { type: 'analyze-selection' } }, '*');
     }
 
     function swapVariables() {
-      showLoading();
+      showLoading('Bytter ut variabler...');
       parent.postMessage({ 
         pluginMessage: { 
           type: 'swap-variables', 
@@ -369,8 +367,9 @@
       parent.postMessage({ pluginMessage: { type: 'cancel' } }, '*');
     }
 
-    function showLoading() {
+    function showLoading(text = 'Analyserer komponent...') {
       hideAll();
+      loadingTextEl.textContent = text;
       loadingEl.classList.remove('hidden');
     }
 

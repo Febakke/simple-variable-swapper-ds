@@ -5,7 +5,7 @@
 // Vis UI med størrelse og tema
 figma.showUI(__html__, {
     width: 400,
-    height: 600,
+    height: 500,
     themeColors: true
 });
 // Hovedmelding-håndterer
