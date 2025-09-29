@@ -411,12 +411,17 @@
     function showSuccess(data) {
       hideAll();
       
-      const { successCount, errorCount, errors } = data;
+      const { successCount, errorCount, errors, errorGroups } = data;
       let message = `Byttet ${successCount} variabel${successCount !== 1 ? 'er' : ''}.`;
       
       if (errorCount > 0) {
         message += ` ${errorCount} feil oppstod.`;
-        if (errors.length > 0) {
+        // Hvis grupper er sendt fra plugin, vis oppsummert liste
+        if (Array.isArray(errorGroups) && errorGroups.length > 0) {
+          const lines = errorGroups.map(g => `${g.count}× ${g.message}`);
+          message += `\n\nFeil:\n${lines.join('\n')}`;
+        } else if (errors.length > 0) {
+          // fallback til rå liste
           message += `\n\nFeil:\n${errors.join('\n')}`;
         }
       }

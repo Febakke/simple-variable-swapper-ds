@@ -465,6 +465,7 @@ async function swapVariables(variableMatches) {
     let successCount = 0;
     let errorCount = 0;
     const errors = [];
+    const errorGroups = new Map();
     console.log(`[VARIABLE_SWAP_DEBUG] Starter bytting av ${variableMatches.length} variabler`);
     for (const match of variableMatches) {
         console.log(`[VARIABLE_SWAP_DEBUG] Behandler match: ${match.field} på ${match.nodeName}`);
@@ -568,8 +569,14 @@ async function swapVariables(variableMatches) {
             }
             else {
                 errorCount++;
-                const errorMsg = `Bytting feilet for ${(_j = match.currentVariable) === null || _j === void 0 ? void 0 : _j.name}: Variabel ble ikke koblet til node`;
+                // Diagnostiser vanlige årsaker – spesielt instanser der variabelen ikke kan overstyres
+                let reason = 'Variabel ble ikke koblet til node';
+                if (node.type === 'INSTANCE') {
+                    reason = 'Variabel kan ikke overstyres i instans (ikke eksponert)';
+                }
+                const errorMsg = `Bytting feilet for ${(_j = match.currentVariable) === null || _j === void 0 ? void 0 : _j.name} på ${node.name}: ${reason}`;
                 errors.push(errorMsg);
+                errorGroups.set(errorMsg, (errorGroups.get(errorMsg) || 0) + 1);
                 console.log(`[VARIABLE_SWAP_DEBUG] FEIL: ${errorMsg}`);
             }
         }
@@ -577,6 +584,7 @@ async function swapVariables(variableMatches) {
             errorCount++;
             const errorMsg = `Feil ved bytting av ${(_k = match.currentVariable) === null || _k === void 0 ? void 0 : _k.name}: ${error}`;
             errors.push(errorMsg);
+            errorGroups.set(errorMsg, (errorGroups.get(errorMsg) || 0) + 1);
             console.log(`[VARIABLE_SWAP_DEBUG] FEIL: ${errorMsg}`);
         }
     }
@@ -586,7 +594,8 @@ async function swapVariables(variableMatches) {
         type: 'swap-complete',
         successCount: successCount,
         errorCount: errorCount,
-        errors: errors
+        errors: errors,
+        errorGroups: Array.from(errorGroups.entries()).map(([message, count]) => ({ message, count }))
     });
 }
 // Finn node som har en spesifikk variabel eller nodeId

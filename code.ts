@@ -581,6 +581,7 @@ async function swapVariables(variableMatches: VariableMatch[]) {
   let successCount = 0;
   let errorCount = 0;
   const errors: string[] = [];
+  const errorGroups: Map<string, number> = new Map();
 
   console.log(`[VARIABLE_SWAP_DEBUG] Starter bytting av ${variableMatches.length} variabler`);
 
@@ -704,8 +705,14 @@ async function swapVariables(variableMatches: VariableMatch[]) {
         console.log(`[VARIABLE_SWAP_DEBUG] SUKSESS: Variabel byttet fra ${match.currentVariable?.name} til ${localVariable.name}`);
       } else {
         errorCount++;
-        const errorMsg = `Bytting feilet for ${match.currentVariable?.name}: Variabel ble ikke koblet til node`;
+        // Diagnostiser vanlige årsaker – spesielt instanser der variabelen ikke kan overstyres
+        let reason = 'Variabel ble ikke koblet til node';
+        if (node.type === 'INSTANCE') {
+          reason = 'Variabel kan ikke overstyres i instans (ikke eksponert)';
+        }
+        const errorMsg = `Bytting feilet for ${match.currentVariable?.name} på ${node.name}: ${reason}`;
         errors.push(errorMsg);
+        errorGroups.set(errorMsg, (errorGroups.get(errorMsg) || 0) + 1);
         console.log(`[VARIABLE_SWAP_DEBUG] FEIL: ${errorMsg}`);
       }
 
@@ -713,6 +720,7 @@ async function swapVariables(variableMatches: VariableMatch[]) {
       errorCount++;
       const errorMsg = `Feil ved bytting av ${match.currentVariable?.name}: ${error}`;
       errors.push(errorMsg);
+      errorGroups.set(errorMsg, (errorGroups.get(errorMsg) || 0) + 1);
       console.log(`[VARIABLE_SWAP_DEBUG] FEIL: ${errorMsg}`);
     }
   }
@@ -724,7 +732,8 @@ async function swapVariables(variableMatches: VariableMatch[]) {
     type: 'swap-complete',
     successCount: successCount,
     errorCount: errorCount,
-    errors: errors
+    errors: errors,
+    errorGroups: Array.from(errorGroups.entries()).map(([message, count]) => ({ message, count }))
   });
 }
 

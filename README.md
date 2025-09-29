@@ -50,11 +50,24 @@ Din Figma-fil må ha:
 
 ## Feilsøking
 
-Hvis pluginen ikke finner noen variabler å bytte:
+### Vanlige problemer
 
+**Hvis pluginen ikke finner noen variabler å bytte:**
 * Sjekk at du har lokale variabler med samme navn
 * Sjekk at komponenten faktisk bruker variabler (ikke hardkodede verdier)
 * Sjekk at variablene kommer fra et eksternt bibliotek
+
+**Hvis du får feilmeldinger under bytting:**
+
+* **"Variabel kan ikke overstyres i instans (ikke eksponert)"** - Dette skjer når en variabel er bundet inne i en base-komponent og ikke eksponert for instans-overstyring. Løsning: Åpne hovedkomponenten og eksponer variabelen/egenskapen for instanser, eller flytt bindingen til et sted der den kan overstyres.
+
+* **"Ingen lokal variabel funnet for: [navn]"** - Det finnes ingen lokal variabel med samme navn. Løsning: Opprett en lokal variabel med samme navn, eller sjekk at navnet stemmer.
+
+* **"Kunne ikke finne node for variabel"** - Pluginen kan ikke finne noden som bruker variabelen. Dette kan skje hvis komponenten har endret seg. Løsning: Prøv å analysere komponenten på nytt.
+
+### Feilhåndtering
+
+Pluginen grupperer like feilmeldinger for å gi en oversiktlig oppsummering. I stedet for å vise "8× samme feilmelding" vises det som "8× [feilmelding]".
 
 Gi beskjed hvis du finner bugs eller andre problemer!
 
