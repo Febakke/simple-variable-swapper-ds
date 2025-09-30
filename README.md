@@ -1,76 +1,76 @@
 # Variable Swapper BETA 🔄
 
-Hvis du har importert komponenter fra et eksternt bibliotek og ønsker å koble variablene til ditt lokale bibliotek i stedet, kan du bruke denne pluginen til å automatisk bytte variabler basert på navn.
+If you have imported components from an external library and want to connect the variables to your local library instead, you can use this plugin to automatically swap variables based on names.
 
-⚠️ Denne pluginen fungerer med alle typer variabler (farger, størrelser, typografi, border-radius, border-width) og text styles. Den matcher variabler basert på navn mellom eksterne og lokale biblioteker.
+⚠️ This plugin works with all types of variables (colors, sizes, typography, border-radius, border-width) and text styles. It matches variables based on names between external and local libraries.
 
-## Hvordan bruke
+## How to use
 
-1. **Åpne pluginen** og velg en komponent eller komponent-set du vil analysere
-2. **Klikk "Analyser valgt komponent"** for å finne variabler som kan byttes
-3. **Se oppsummeringen** som viser hvor mange variabler som kan byttes til lokale variabler
-4. **Klikk "Bytt alle variabler"** for å koble til lokale variabler
-5. 🎉 Nå er variablene koblet til ditt lokale bibliotek!
+1. **Open the plugin** and select a component or component-set you want to analyze
+2. **Click "Analyze selected component"** to find variables that can be swapped
+3. **See the summary** showing how many variables can be swapped to local variables
+4. **Click "Swap all variables"** to connect to local variables
+5. 🎉 Now the variables are connected to your local library!
 
-## Funksjoner
+## Features
 
-* **Støtter alle variabeltyper** - Farger, størrelser, typografi, border-radius, border-width
-* **Text style støtte** - Bytter også text styles til lokale versjoner
-* **ComponentSet støtte** - Analyserer alle varianter i en komponent-set
-* **Smart matching** - Matcher variabler basert på navn mellom biblioteker
-* **Enkel brukeropplevelse** - Kun to klikk for å bytte alle variabler
+* **Supports all variable types** - Colors, sizes, typography, border-radius, border-width
+* **Text style support** - Also swaps text styles to local versions
+* **ComponentSet support** - Analyzes all variants in a component-set
+* **Smart matching** - Matches variables based on names between libraries
+* **Simple user experience** - Just two clicks to swap all variables
 
-## Hvordan installere
+## How to install
 
-1. Last ned denne repo-en
-2. Bruk "Import plugin from manifest..." i Figma og velg `manifest.json`
-3. Nå kan du finne pluginen i Figma under Plugins
+1. Download this repository
+2. Use "Import plugin from manifest..." in Figma and select `manifest.json`
+3. Now you can find the plugin in Figma under Plugins
 
-## Krav
+## Requirements
 
-Din Figma-fil må ha:
+Your Figma file must have:
 
-* **Lokale variabler** har samme struktur som designsystemets Figma fil
-* **Lokale text styles** har samme navn som i vår
-* **Komponenter** som bruker variabler fra eksterne biblioteker
+* **Local variables** with the same structure as the design system's Figma file
+* **Local text styles** with the same names as in ours
+* **Components** that use variables from external libraries
 
-## Hvordan det fungerer
+## How it works
 
-1. **Analyse**: Pluginen går gjennom alle noder i den valgte komponenten og finner variabler som er koblet til eksterne biblioteker
-2. **Matching**: Den matcher disse variablene med lokale variabler basert på navn
-3. **Bytting**: Den bytter koblingene fra eksterne til lokale variabler
+1. **Analysis**: The plugin goes through all nodes in the selected component and finds variables that are connected to external libraries
+2. **Matching**: It matches these variables with local variables based on names
+3. **Swapping**: It swaps the connections from external to local variables
 
-## Støttede variabeltyper
+## Supported variable types
 
-* **Farger** - `fills`, `strokes`, `fills[0].color`, `strokes[0].color`
-* **Størrelser** - `width`, `height`, `paddingTop`, `paddingBottom`, etc.
-* **Typografi** - `fontSize`, `fontFamily`, `fontWeight`, `lineHeight`, etc.
+* **Colors** - `fills`, `strokes`, `fills[0].color`, `strokes[0].color`
+* **Sizes** - `width`, `height`, `paddingTop`, `paddingBottom`, etc.
+* **Typography** - `fontSize`, `fontFamily`, `fontWeight`, `lineHeight`, etc.
 * **Border** - `cornerRadius`, `strokeWeight`
-* **Text styles** - Komplette text style koblinger
+* **Text styles** - Complete text style connections
 
-## Feilsøking
+## Troubleshooting
 
-### Vanlige problemer
+### Common problems
 
-**Hvis pluginen ikke finner noen variabler å bytte:**
-* Sjekk at du har lokale variabler med samme navn
-* Sjekk at komponenten faktisk bruker variabler (ikke hardkodede verdier)
-* Sjekk at variablene kommer fra et eksternt bibliotek
+**If the plugin doesn't find any variables to swap:**
+* Check that you have local variables with the same names
+* Check that the component actually uses variables (not hardcoded values)
+* Check that the variables come from an external library
 
-**Hvis du får feilmeldinger under bytting:**
+**If you get error messages during swapping:**
 
-* **"Variabel kan ikke overstyres i instans (ikke eksponert)"** - Dette skjer når en variabel er bundet inne i en base-komponent og ikke eksponert for instans-overstyring. Løsning: Åpne hovedkomponenten og eksponer variabelen/egenskapen for instanser, eller flytt bindingen til et sted der den kan overstyres.
+* **"Variable cannot be overridden in instance (not exposed)"** - This happens when a variable is bound inside a base component and not exposed for instance override. Solution: Open the main component and expose the variable/property for instances, or move the binding to a place where it can be overridden.
 
-* **"Ingen lokal variabel funnet for: [navn]"** - Det finnes ingen lokal variabel med samme navn. Løsning: Opprett en lokal variabel med samme navn, eller sjekk at navnet stemmer.
+* **"No local variable found for: [name]"** - There is no local variable with the same name. Solution: Create a local variable with the same name, or check that the name matches.
 
-* **"Kunne ikke finne node for variabel"** - Pluginen kan ikke finne noden som bruker variabelen. Dette kan skje hvis komponenten har endret seg. Løsning: Prøv å analysere komponenten på nytt.
+* **"Could not find node for variable"** - The plugin cannot find the node that uses the variable. This can happen if the component has changed. Solution: Try analyzing the component again.
 
-### Feilhåndtering
+### Error handling
 
-Pluginen grupperer like feilmeldinger for å gi en oversiktlig oppsummering. I stedet for å vise "8× samme feilmelding" vises det som "8× [feilmelding]".
+The plugin groups similar error messages to provide an overview summary. Instead of showing "8× same error message" it shows as "8× [error message]".
 
-Gi beskjed hvis du finner bugs eller andre problemer!
+Let us know if you find bugs or other problems!
 
-## Om
+## About
 
-En Figma plugin for å automatisk bytte variabler på importerte komponenter til lokale variabler basert på navn-matching.
+A Figma plugin for automatically swapping variables on imported components to local variables based on name matching.

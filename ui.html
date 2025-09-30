@@ -8,12 +8,12 @@
   <div class="container">
     <header class="header">
       <h1>Variable Swapper BETA</h1>
-      <p class="subtitle">Bytt variabler på importerte komponenter til lokale variabler</p>
+      <p class="subtitle">Swap variables on imported components to local variables</p>
     </header>
 
     <div id="loading" class="loading hidden">
       <div class="spinner"></div>
-      <p id="loading-text">Analyserer komponent...</p>
+      <p id="loading-text">Analyzing component...</p>
     </div>
 
     <div id="error" class="error hidden">
@@ -25,7 +25,7 @@
       <div class="action-section">
         <button id="analyze-btn" class="button primary">
           <span class="button-icon">🔍</span>
-          Analyser valgt komponent
+          Analyze selected component
         </button>
       </div>
 
@@ -40,8 +40,8 @@
           <div class="summary-card">
             <div class="summary-icon">📊</div>
             <div class="summary-content">
-              <h3>Analyse fullført</h3>
-              <p id="summary-text">Fant <span id="variable-count">0</span> variabler som kan byttes til lokale variabler</p>
+              <h3>Analysis completed</h3>
+              <p id="summary-text">Found <span id="variable-count">0</span> variables that can be swapped to local variables</p>
             </div>
           </div>
         </div>
@@ -49,15 +49,16 @@
         <div class="actions">
           <button id="swap-btn" class="button primary" disabled>
             <span class="button-icon">🔄</span>
-            Bytt alle variabler
+            Swap all variables
           </button>
         </div>
       </div>
 
       <div id="success" class="success hidden">
         <div class="success-icon">✅</div>
-        <h3>Variabler byttet!</h3>
+        <h3>Variables swapped!</h3>
         <p id="success-message"></p>
+        <div id="error-list" class="error-list hidden"></div>
       </div>
     </div>
   </div>
@@ -305,6 +306,36 @@
       margin-bottom: 1.5rem;
     }
 
+    .error-list {
+      width: 100%;
+      max-width: 100%;
+      text-align: left;
+      margin-top: 1rem;
+    }
+
+    .error-list h4 {
+      font-size: 0.875rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      color: var(--figma-color-text);
+    }
+
+    .error-list ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .error-list li {
+      padding: 0.5rem;
+      margin-bottom: 0.25rem;
+      border: 1px solid var(--figma-color-border-danger);
+      border-radius: 0.25rem;
+      font-size: 0.8125rem;
+      color: var(--figma-color-text);
+      word-wrap: break-word;
+    }
+
     .hidden {
       display: none !important;
     }
@@ -313,7 +344,7 @@
   <script>
     let variableMatches = [];
 
-    // UI elementer
+    // UI elements
     const loadingEl = document.getElementById('loading');
     const errorEl = document.getElementById('error');
     const errorMessageEl = document.getElementById('error-message');
@@ -321,6 +352,7 @@
     const resultsEl = document.getElementById('results');
     const successEl = document.getElementById('success');
     const successMessageEl = document.getElementById('success-message');
+    const errorListEl = document.getElementById('error-list');
     const componentNameEl = document.getElementById('component-name');
     const componentTypeEl = document.getElementById('component-type');
     const componentDetailsEl = document.getElementById('component-details');
@@ -328,14 +360,14 @@
     const swapBtnEl = document.getElementById('swap-btn');
     const loadingTextEl = document.getElementById('loading-text');
 
-    // Knapper
+    // Buttons
     const analyzeBtnEl = document.getElementById('analyze-btn');
 
     // Event listeners
     analyzeBtnEl.addEventListener('click', analyzeSelection);
     swapBtnEl.addEventListener('click', swapVariables);
 
-    // Lytt til meldinger fra plugin
+    // Listen to messages from plugin
     window.onmessage = (event) => {
       const msg = event.data.pluginMessage;
       
@@ -349,12 +381,12 @@
     };
 
     function analyzeSelection() {
-      showLoading('Analyserer komponent...');
+      showLoading('Analyzing component...');
       parent.postMessage({ pluginMessage: { type: 'analyze-selection' } }, '*');
     }
 
     function swapVariables() {
-      showLoading('Bytter ut variabler...');
+      showLoading('Swapping variables...');
       parent.postMessage({ 
         pluginMessage: { 
           type: 'swap-variables', 
@@ -367,7 +399,7 @@
       parent.postMessage({ pluginMessage: { type: 'cancel' } }, '*');
     }
 
-    function showLoading(text = 'Analyserer komponent...') {
+    function showLoading(text = 'Analyzing component...') {
       hideAll();
       loadingTextEl.textContent = text;
       loadingEl.classList.remove('hidden');
@@ -383,26 +415,26 @@
       hideAll();
       
       variableMatches = data.variableMatches || [];
-      componentNameEl.textContent = data.componentName || 'Ukjent komponent';
+      componentNameEl.textContent = data.componentName || 'Unknown component';
       componentTypeEl.textContent = data.componentType || 'UKJENT';
       
-      // Vis ekstra detaljer for ComponentSet
+      // Show extra details for ComponentSet
       if (data.componentType === 'COMPONENT_SET') {
         const variantCount = data.variantCount || 0;
-        componentDetailsEl.innerHTML = `Komponent-set med ${variantCount} variant${variantCount !== 1 ? 'er' : ''}`;
+        componentDetailsEl.innerHTML = `Component-set with ${variantCount} variant${variantCount !== 1 ? 's' : ''}`;
         componentDetailsEl.classList.remove('hidden');
       } else {
         componentDetailsEl.classList.add('hidden');
       }
       
-      // Tell antall variabler som kan byttes
+      // Count number of variables that can be swapped
       const swappableCount = variableMatches.filter(match => 
         match.localVariable !== null || match.localTextStyle !== null
       ).length;
       
       variableCountEl.textContent = swappableCount;
       
-      // Aktiver swap-knapp hvis det finnes matchende variabler eller text styles
+      // Enable swap button if there are matching variables or text styles
       swapBtnEl.disabled = swappableCount === 0;
       
       resultsEl.classList.remove('hidden');
@@ -412,21 +444,43 @@
       hideAll();
       
       const { successCount, errorCount, errors, errorGroups } = data;
-      let message = `Byttet ${successCount} variabel${successCount !== 1 ? 'er' : ''}.`;
+      let message = `Swapped ${successCount} variable${successCount !== 1 ? 's' : ''}.`;
       
       if (errorCount > 0) {
-        message += ` ${errorCount} feil oppstod.`;
-        // Hvis grupper er sendt fra plugin, vis oppsummert liste
-        if (Array.isArray(errorGroups) && errorGroups.length > 0) {
-          const lines = errorGroups.map(g => `${g.count}× ${g.message}`);
-          message += `\n\nFeil:\n${lines.join('\n')}`;
-        } else if (errors.length > 0) {
-          // fallback til rå liste
-          message += `\n\nFeil:\n${errors.join('\n')}`;
-        }
+        message += ` ${errorCount} error${errorCount !== 1 ? 's' : ''} occurred.`;
       }
       
       successMessageEl.textContent = message;
+      
+      // Show error list if there are errors
+      if (errorCount > 0) {
+        errorListEl.innerHTML = '';
+        
+        // If groups are sent from plugin, show summarized list
+        if (Array.isArray(errorGroups) && errorGroups.length > 0) {
+          const errorList = document.createElement('ul');
+          errorGroups.forEach(group => {
+            const li = document.createElement('li');
+            li.textContent = `${group.count}× ${group.message}`;
+            errorList.appendChild(li);
+          });
+          errorListEl.appendChild(errorList);
+        } else if (errors.length > 0) {
+          // fallback to raw list
+          const errorList = document.createElement('ul');
+          errors.forEach(error => {
+            const li = document.createElement('li');
+            li.textContent = error;
+            errorList.appendChild(li);
+          });
+          errorListEl.appendChild(errorList);
+        }
+        
+        errorListEl.classList.remove('hidden');
+      } else {
+        errorListEl.classList.add('hidden');
+      }
+      
       successEl.classList.remove('hidden');
     }
 
