@@ -7,10 +7,10 @@ If you have imported components from an external library and want to connect the
 ## How to use
 
 1. **Open the plugin** and select a component or component-set you want to analyze
-2. **Click "Analyze selected component"** to find variables that can be swapped
-3. **See the summary** showing how many variables can be swapped to local variables
-4. **Click "Swap all variables"** to connect to local variables
-5. 🎉 Now the variables are connected to your local library!
+2. **Click "Analyze selected component"** to find variables that can be swapped and detect external instances under the selection
+3. **See the summary** showing both swappable variables and external instances
+4. **Click "Swap instances and variables"** – the plugin will first swap external instances to local components, then re-analyze and swap variables
+5. 🎉 Instances and variables are now connected to your local library!
 
 ## Features
 
@@ -36,9 +36,10 @@ Your Figma file must have:
 
 ## How it works
 
-1. **Analysis**: The plugin goes through all nodes in the selected component and finds variables that are connected to external libraries
-2. **Matching**: It matches these variables with local variables based on names
-3. **Swapping**: It swaps the connections from external to local variables
+1. **Analysis**: The plugin scans the selected component, counts swappable variables, and detects top‑level external instances
+2. **Instance swapping**: External instances are swapped to local components by matching the ComponentSet name (and variant when available); overrides are preserved by Figma's `swapComponent` heuristics
+3. **Re‑analysis**: After instance swaps, the selection is analyzed again to get an accurate list of variables
+4. **Variable swapping**: Variables are swapped to local variables and text styles
 
 ## Supported variable types
 
@@ -70,6 +71,10 @@ Your Figma file must have:
 The plugin groups similar error messages to provide an overview summary. Instead of showing "8× same error message" it shows as "8× [error message]".
 
 Let us know if you find bugs or other problems!
+
+## Icon library
+
+This plugin does not replace icon instances. Icons in our community file come from an external library and the actual components don't live in the file, so they cannot be swapped by the plugin. To update icons to your local icon library, we recommend using Figma's built‑in "Swap library" feature to remap all icon instances in the file to your local icon library first. After that, run this plugin to swap instances and variables for the remaining components.
 
 ## About
 

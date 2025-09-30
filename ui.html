@@ -27,6 +27,11 @@
           <span class="button-icon">🔍</span>
           Analyze selected component
         </button>
+        <div style="height: 0.75rem;"></div>
+        <button id="swap-all-btn" class="button primary hidden" disabled>
+          <span class="button-icon">🔄</span>
+          Swap instances and variables
+        </button>
       </div>
 
       <div id="results" class="results hidden">
@@ -41,17 +46,12 @@
             <div class="summary-icon">📊</div>
             <div class="summary-content">
               <h3>Analysis completed</h3>
-              <p id="summary-text">Found <span id="variable-count">0</span> variables that can be swapped to local variables</p>
+              <p id="summary-text">Found <span id="variable-count">0</span> variables and <span id="external-count">0</span> external instance(s)</p>
             </div>
           </div>
         </div>
 
-        <div class="actions">
-          <button id="swap-btn" class="button primary" disabled>
-            <span class="button-icon">🔄</span>
-            Swap all variables
-          </button>
-        </div>
+        
       </div>
 
       <div id="success" class="success hidden">
@@ -361,15 +361,17 @@
     const componentTypeEl = document.getElementById('component-type');
     const componentDetailsEl = document.getElementById('component-details');
     const variableCountEl = document.getElementById('variable-count');
-    const swapBtnEl = document.getElementById('swap-btn');
+    
     const loadingTextEl = document.getElementById('loading-text');
+    const swapAllBtnEl = document.getElementById('swap-all-btn');
+    const externalCountEl = document.getElementById('external-count');
 
     // Buttons
     const analyzeBtnEl = document.getElementById('analyze-btn');
 
     // Event listeners
     analyzeBtnEl.addEventListener('click', analyzeSelection);
-    swapBtnEl.addEventListener('click', swapVariables);
+    swapAllBtnEl.addEventListener('click', swapInstancesAndVariables);
 
     // Listen to messages from plugin
     window.onmessage = (event) => {
@@ -381,6 +383,8 @@
         showResults(msg);
       } else if (msg.type === 'swap-complete') {
         showSuccess(msg);
+      } else if (msg.type === 'combined-swap-complete') {
+        showExternalSwapResult(msg);
       }
     };
 
@@ -389,14 +393,9 @@
       parent.postMessage({ pluginMessage: { type: 'analyze-selection' } }, '*');
     }
 
-    function swapVariables() {
-      showLoading('Swapping variables...');
-      parent.postMessage({ 
-        pluginMessage: { 
-          type: 'swap-variables', 
-          variableMatches: variableMatches 
-        } 
-      }, '*');
+    function swapInstancesAndVariables() {
+      showLoading('Swapping instances and variables...');
+      parent.postMessage({ pluginMessage: { type: 'swap-instances-and-variables' } }, '*');
     }
 
     function cancel() {
@@ -437,11 +436,54 @@
       ).length;
       
       variableCountEl.textContent = swappableCount;
+      if (typeof data.externalCount === 'number') {
+        externalCountEl.textContent = data.externalCount;
+      }
       
-      // Enable swap button if there are matching variables or text styles
-      swapBtnEl.disabled = swappableCount === 0;
+      // Enable combined swap if either we have variables to swap or external instances
+      const enableCombined = (swappableCount > 0) || ((data.externalCount || 0) > 0);
+      swapAllBtnEl.disabled = !enableCombined;
+      if (enableCombined) {
+        swapAllBtnEl.classList.remove('hidden');
+      } else {
+        swapAllBtnEl.classList.add('hidden');
+      }
       
+      // Vis knapp først etter analyse
+      swapAllBtnEl.disabled = !enableCombined;
       resultsEl.classList.remove('hidden');
+    }
+
+    function showExternalInstances(data) {
+      hideAll();
+      const count = data.count || 0;
+      externalCountEl.textContent = count;
+      resultsEl.classList.remove('hidden');
+    }
+
+    function showExternalSwapResult(data) {
+      hideAll();
+      const swapped = data.swappedCount || 0;
+      const attempted = data.attemptedCount || 0;
+      const failures = Array.isArray(data.failures) ? data.failures : [];
+      externalCountEl.textContent = attempted;
+      resultsEl.classList.remove('hidden');
+      // Also show success panel summary
+      successMessageEl.textContent = `Swapped ${swapped}/${attempted} external instance${attempted !== 1 ? 's' : ''}.`;
+      if (failures.length > 0) {
+        errorListEl.innerHTML = '';
+        const ul = document.createElement('ul');
+        failures.slice(0, 20).forEach(err => {
+          const li = document.createElement('li');
+          li.textContent = err;
+          ul.appendChild(li);
+        });
+        errorListEl.appendChild(ul);
+        errorListEl.classList.remove('hidden');
+      } else {
+        errorListEl.classList.add('hidden');
+      }
+      successEl.classList.remove('hidden');
     }
 
     function showSuccess(data) {

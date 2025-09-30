@@ -50,6 +50,12 @@ figma.ui.onmessage = async (msg: PluginMessage) => {
       await analyzeSelection();
     } else if (msg.type === 'swap-variables') {
       await swapVariables(msg.variableMatches || []);
+    } else if (msg.type === 'find-external-instances') {
+      await findExternalInstancesAndReport();
+    } else if (msg.type === 'swap-external-instances') {
+      await swapExternalInstancesAndReport();
+    } else if (msg.type === 'swap-instances-and-variables') {
+      await swapInstancesAndVariablesCombined();
     } else if (msg.type === 'cancel') {
       figma.closePlugin();
     }
@@ -113,6 +119,16 @@ async function analyzeSelection() {
 
   // Analyze component for variables
   const variableMatches: VariableMatch[] = [];
+  // Count top-level external instances under selection
+  let externalCount = 0;
+  try {
+    const rootForScan = selectedNode as SceneNode;
+    const externalInstances = await collectExternalInstances(rootForScan);
+    externalCount = externalInstances.length;
+    console.log(`[ANALYZE_TRACE] externalCount=${externalCount}`);
+  } catch (e) {
+    console.warn('[ANALYZE_TRACE] external scan failed', e);
+  }
   
   if (selectedNode.type === 'COMPONENT_SET') {
     // For ComponentSet, analyze all variants
@@ -131,7 +147,8 @@ async function analyzeSelection() {
     type: 'analysis-complete',
     variableMatches: variableMatches,
     componentName: selectedNode.name,
-    componentType: selectedNode.type
+    componentType: selectedNode.type,
+    externalCount: externalCount
   };
 
   // Add variantCount for ComponentSet
@@ -569,6 +586,321 @@ async function analyzeNodeForVariables(
   }
 }
 
+// Auto-swap external instances to local components before variable swapping
+type AutoSwapResult = {
+  swappedCount: number;
+  attemptedCount: number;
+  failures: string[];
+};
+
+// Helpers for variant-aware matching
+function normalizeVariantString(variantStr: string): string {
+  if (!variantStr) return '';
+  const parts = variantStr
+    .split(',')
+    .map(p => p.trim())
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
+  return parts.join(',');
+}
+
+function parseComponentNameParts(name: string): { baseName: string; variantKey: string } {
+  const [base, ...rest] = name.split('/');
+  const variantStr = rest.join('/');
+  return { baseName: base || name, variantKey: normalizeVariantString(variantStr || '') };
+}
+
+type LocalComponentIndex = {
+  byFullName: Map<string, ComponentNode>;
+  bySetAndVariant: Map<string, Map<string, ComponentNode>>; // setName -> normalizedVariantKey -> component
+  bySetAndVariantNormalized: Map<string, Map<string, ComponentNode>>; // normalized set name -> variant map
+  bySet: Map<string, ComponentNode>; // representative component per set
+  bySetNormalized: Map<string, ComponentNode>; // representative per normalized set name
+};
+
+function safeNodeName(node: BaseNode | null | undefined): string {
+  try {
+    if (!node) return '[null]';
+    return (node as any).name as string;
+  } catch {
+    try {
+      return `[id:${(node as any).id || 'unknown'}]`;
+    } catch {
+      return '[unknown]';
+    }
+  }
+}
+
+function normalizeSetName(name: string): string {
+  if (!name) return '';
+  // strip leading dots/underscores, trim, collapse spaces, lowercase
+  const stripped = name.replace(/^([._])+/, '').trim();
+  return stripped.replace(/\s+/g, ' ').toLowerCase();
+}
+
+async function buildLocalComponentIndex(): Promise<LocalComponentIndex> {
+  const byFullName = new Map<string, ComponentNode>();
+  const bySetAndVariant = new Map<string, Map<string, ComponentNode>>();
+  const bySetAndVariantNormalized = new Map<string, Map<string, ComponentNode>>();
+  const bySet = new Map<string, ComponentNode>();
+  const bySetNormalized = new Map<string, ComponentNode>();
+  try {
+    // Always load all pages to index components across the whole file
+    try {
+      console.log('[LOCAL_INDEX_TRACE] loadAllPagesAsync: start');
+      await figma.loadAllPagesAsync();
+      console.log('[LOCAL_INDEX_TRACE] loadAllPagesAsync: done');
+    } catch (loadErr) {
+      console.warn('[LOCAL_INDEX_TRACE] loadAllPagesAsync failed', loadErr);
+    }
+    const components = figma.root.findAll(n => n.type === 'COMPONENT') as ComponentNode[];
+    console.log(`[LOCAL_INDEX_TRACE] phase=allPages count=${components.length}`);
+    let i = 0;
+    for (const comp of components) {
+      i++;
+      if (i <= 110) {
+        // keep early items verbose to diagnose indexing
+        console.log(`[LOCAL_INDEX_TRACE] scan #${i} compName="${comp.name}" id=${comp.id}`);
+      }
+      byFullName.set(comp.name, comp);
+      const parent = comp.parent;
+      const { baseName, variantKey } = parseComponentNameParts(comp.name);
+      const setName = parent && parent.type === 'COMPONENT_SET' ? parent.name : baseName;
+      if (!bySetAndVariant.has(setName)) bySetAndVariant.set(setName, new Map());
+      const normalizedSet = normalizeSetName(setName);
+      if (!bySetAndVariantNormalized.has(normalizedSet)) bySetAndVariantNormalized.set(normalizedSet, new Map());
+      // Store representative per set (first one wins)
+      if (!bySet.has(setName)) bySet.set(setName, comp);
+      if (!bySetNormalized.has(normalizedSet)) bySetNormalized.set(normalizedSet, comp);
+      // Determine variant key: for variants inside a ComponentSet without '/', the entire name is the variant string
+      let key = variantKey || '';
+      if (parent && parent.type === 'COMPONENT_SET') {
+        key = comp.name.includes('/') ? (variantKey || '') : normalizeVariantString(comp.name);
+      }
+      if (!bySetAndVariant.get(setName)!.has(key)) {
+        bySetAndVariant.get(setName)!.set(key, comp);
+      }
+      if (!bySetAndVariantNormalized.get(normalizedSet)!.has(key)) {
+        bySetAndVariantNormalized.get(normalizedSet)!.set(key, comp);
+      }
+      // Verbose trace for first 110 items; avoid spamming logs for very large files
+      if (i <= 110) {
+        console.log(`[LOCAL_INDEX_TRACE] add byFullName="${comp.name}" id=${comp.id} setName="${setName}" variantKey="${key}" parentType=${parent ? parent.type : 'none'}`);
+      }
+    }
+  } catch (e) {
+    console.warn('[INSTANCE_SWAP_DEBUG] Could not index local components', e);
+  }
+  const setNames = Array.from(bySet.keys());
+  console.log(`[INSTANCE_SWAP_DEBUG] Local component index sizes: full=${byFullName.size}, sets=${bySet.size}`);
+  console.log(`[LOCAL_INDEX_TRACE] setNames sample: ${setNames.slice(0, 20).join(' | ')}`);
+  return { byFullName, bySetAndVariant, bySetAndVariantNormalized, bySet, bySetNormalized };
+}
+
+async function collectExternalInstances(root: SceneNode): Promise<InstanceNode[]> {
+  // Only collect top-level external instances (do not traverse into instance children)
+  const result: InstanceNode[] = [];
+  type Frame = { node: SceneNode; insideInstance: boolean };
+  const stack: Frame[] = [{ node: root, insideInstance: false }];
+  while (stack.length > 0) {
+    const { node: n, insideInstance } = stack.pop() as Frame;
+    if (n.type === 'INSTANCE') {
+      const inst = n as InstanceNode;
+      try {
+        const main = await inst.getMainComponentAsync();
+        if (main && (main as any).remote === true) {
+          result.push(inst);
+        }
+      } catch (e) {
+        console.warn('[INSTANCE_SWAP_DEBUG] Could not resolve main component for instance', e);
+      }
+      // Do not traverse into children of instances
+      continue;
+    }
+    if (!insideInstance && 'children' in n) {
+      for (const c of n.children) stack.push({ node: c as SceneNode, insideInstance: false });
+    }
+  }
+  return result;
+}
+
+async function autoSwapExternalInstancesUnderSelection(): Promise<AutoSwapResult> {
+  const selection = figma.currentPage.selection;
+  if (selection.length === 0) return { swappedCount: 0, attemptedCount: 0, failures: [] };
+  const root = selection[0] as SceneNode;
+  const externalInstances = await collectExternalInstances(root);
+  if (externalInstances.length === 0) {
+    console.log('[INSTANCE_SWAP_DEBUG] No external instances detected under selection');
+    return { swappedCount: 0, attemptedCount: 0, failures: [] };
+  }
+  console.log(`[INSTANCE_SWAP_DEBUG] Found ${externalInstances.length} external instances`);
+  const localIndex = await buildLocalComponentIndex();
+  let swapped = 0;
+  const failures: string[] = [];
+  for (const inst of externalInstances) {
+    try {
+      // Re-resolve instance by id to avoid stale reference issues in dynamic-page
+      const freshInst = await figma.getNodeByIdAsync(inst.id) as InstanceNode | null;
+      if (!freshInst || freshInst.removed) {
+        const msg = `Instance disappeared during swap: id=${inst.id}`;
+        failures.push(msg);
+        console.warn('[EXTERNAL_SWAP] ' + msg);
+        continue;
+      }
+      const main = await freshInst.getMainComponentAsync();
+      const mainName = main ? main.name : inst.name;
+      // Strategy: ALWAYS use ComponentSet + variant (ignore instance's display name and full-name match)
+      const parent = main ? main.parent : null;
+      const setName = parent && parent.type === 'COMPONENT_SET' ? parent.name : parseComponentNameParts(mainName).baseName;
+      const variantKey = parent && parent.type === 'COMPONENT_SET' && !mainName.includes('/')
+        ? normalizeVariantString(mainName)
+        : parseComponentNameParts(mainName).variantKey;
+      let local: ComponentNode | undefined;
+      let variantMap = setName ? localIndex.bySetAndVariant.get(setName) : undefined;
+      // If not found, try normalized lookup (handles leading ./_ and case differences)
+      if (!variantMap) {
+        const normalizedSet = normalizeSetName(setName);
+        variantMap = localIndex.bySetAndVariantNormalized.get(normalizedSet);
+        if (variantMap) {
+          console.log(`[MATCH_TRACE] normalized setName hit for "${setName}" -> "${normalizedSet}"`);
+        }
+      }
+      const availableKeys = variantMap ? Array.from(variantMap.keys()) : [];
+      console.log(`[MATCH_TRACE] instance name="${safeNodeName(freshInst)}" setName="${setName}" variantKey="${variantKey}" hasVariantMap=${!!variantMap} availableKeysCount=${availableKeys.length} keysSample="${availableKeys.slice(0, 20).join(' | ')}"`);
+      if (variantMap) {
+        if (variantKey && variantMap.has(variantKey)) {
+          local = variantMap.get(variantKey);
+          console.log(`[MATCH_TRACE] variantMap MATCH setName="${setName}" variantKey="${variantKey}" localName="${local?.name}"`);
+        } else if (variantMap.has('')) {
+          // fallback to the base component if present
+          local = variantMap.get('');
+          console.log(`[MATCH_TRACE] variantMap FALLBACK base component setName="${setName}" localName="${local?.name}"`);
+        }
+      }
+      // Final fallback: representative per set (ignores variant entirely)
+      if (!local) {
+        local = localIndex.bySet.get(setName) || localIndex.bySetNormalized.get(normalizeSetName(setName));
+        if (local) {
+          console.log(`[MATCH_TRACE] set representative fallback used for setName="${setName}" localName="${local.name}"`);
+        }
+      }
+      if (local) {
+        try {
+          freshInst.swapComponent(local);
+        } catch (swapErr) {
+          const msg = `Swap failed for id=${freshInst.id} setName=${setName} variant=${variantKey}: ${swapErr}`;
+          failures.push(msg);
+          console.warn('[EXTERNAL_SWAP] ' + msg);
+          continue;
+        }
+        swapped++;
+        console.log(`[INSTANCE_SWAP_DEBUG] Swapped instance "${safeNodeName(freshInst)}" -> local "${local.name}"`);
+      } else {
+        failures.push(`No local component found for setName: ${setName} variant: ${variantKey || '(base)'}`);
+        console.log(`[INSTANCE_SWAP_DEBUG] No local match for setName="${setName}" variantKey="${variantKey}". Hint: check available keys above.`);
+      }
+    } catch (e) {
+      const msg = `Error swapping external instance ${inst.name}: ${e}`;
+      failures.push(msg);
+      console.warn('[INSTANCE_SWAP_DEBUG] ' + msg);
+    }
+  }
+  return { swappedCount: swapped, attemptedCount: externalInstances.length, failures };
+}
+
+// New: find external instances and send count to UI
+async function findExternalInstancesAndReport() {
+  const selection = figma.currentPage.selection;
+  if (selection.length === 0) {
+    figma.ui.postMessage({ type: 'error', message: 'Please select a component first.' });
+    return;
+  }
+  const root = selection[0] as SceneNode;
+  const externalInstances = await collectExternalInstances(root);
+  console.log(`[EXTERNAL_SCAN] Found ${externalInstances.length} external instance(s)`);
+  // Try to enrich with component set names and variant info
+  const sample: any[] = [];
+  for (const inst of externalInstances.slice(0, 10)) {
+    try {
+      const main = await inst.getMainComponentAsync();
+      const parent = main ? main.parent : null;
+      const setName = parent && parent.type === 'COMPONENT_SET' ? parent.name : '';
+      const mainName = main ? main.name : inst.name;
+      sample.push({ inst: inst.name, setName, mainName });
+    } catch {}
+  }
+  if (sample.length > 0) {
+    console.log(`[EXTERNAL_SCAN] sample=${JSON.stringify(sample)}`);
+  }
+  figma.ui.postMessage({ type: 'external-instances-found', count: externalInstances.length });
+}
+
+// New: explicit swap external instances via button
+async function swapExternalInstancesAndReport() {
+  try {
+    console.log('[EXTERNAL_SWAP] start');
+    const result = await autoSwapExternalInstancesUnderSelection();
+    console.log(`[EXTERNAL_SWAP] done swapped=${result.swappedCount} attempted=${result.attemptedCount} failures=${result.failures.length}`);
+    figma.ui.postMessage({
+      type: 'external-swap-complete',
+      swappedCount: result.swappedCount,
+      attemptedCount: result.attemptedCount,
+      failures: result.failures
+    });
+  } catch (e) {
+    console.warn('[EXTERNAL_SWAP] error', e);
+    figma.ui.postMessage({ type: 'error', message: `External swap failed: ${e}` });
+  }
+}
+
+// Combined flow: swap instances, re-analyze, then swap variables
+async function swapInstancesAndVariablesCombined() {
+  try {
+    console.log('[COMBINED_SWAP] start');
+    const instResult = await autoSwapExternalInstancesUnderSelection();
+    console.log(`[COMBINED_SWAP] instances swapped=${instResult.swappedCount}/${instResult.attemptedCount}`);
+
+    // Re-analyze to get fresh variable matches
+    const selection = figma.currentPage.selection;
+    if (selection.length === 0) {
+      figma.ui.postMessage({ type: 'error', message: 'Please select a component first.' });
+      return;
+    }
+    const selectedNode = selection[0];
+
+    // Reuse analysis logic to compute variable matches
+    const localVariables = await figma.variables.getLocalVariablesAsync();
+    const localVariableMap = new Map();
+    const localVariableIdSet = new Set<string>();
+    localVariables.forEach(variable => {
+      localVariableMap.set(variable.name, variable);
+      localVariableIdSet.add(variable.id);
+    });
+    const localTextStyles = await figma.getLocalTextStylesAsync();
+    const variableMatches: VariableMatch[] = [];
+    if (selectedNode.type === 'COMPONENT_SET') {
+      await analyzeComponentSetForVariables(selectedNode as ComponentSetNode, localVariableMap, localVariableIdSet, localTextStyles, variableMatches);
+    } else {
+      await analyzeNodeForVariables(selectedNode as SceneNode, localVariableMap, localVariableIdSet, localTextStyles, variableMatches);
+    }
+    console.log(`[COMBINED_SWAP] re-analysis matches=${variableMatches.length}`);
+
+    // Filter to only valid matches (localVariable/localTextStyle present)
+    const actionable = variableMatches.filter(m => (m.localVariable !== null) || (m.localTextStyle !== null));
+    await swapVariables(actionable);
+
+    figma.ui.postMessage({
+      type: 'combined-swap-complete',
+      swappedCount: instResult.swappedCount,
+      attemptedCount: instResult.attemptedCount,
+      failures: instResult.failures
+    });
+  } catch (e) {
+    console.warn('[COMBINED_SWAP] error', e);
+    figma.ui.postMessage({ type: 'error', message: `Combined swap failed: ${e}` });
+  }
+}
+
 // Swap variables based on matches
 async function swapVariables(variableMatches: VariableMatch[]) {
   let successCount = 0;
@@ -577,6 +909,24 @@ async function swapVariables(variableMatches: VariableMatch[]) {
   const errorGroups: Map<string, number> = new Map();
 
   console.log(`[VARIABLE_SWAP_DEBUG] Starter bytting av ${variableMatches.length} variabler`);
+
+  // Auto-swap external instances to local counterparts to allow variable overrides
+  try {
+    const autoSwap = await autoSwapExternalInstancesUnderSelection();
+    if (autoSwap.attemptedCount > 0) {
+      console.log(`[INSTANCE_SWAP_DEBUG] Auto-swapped ${autoSwap.swappedCount}/${autoSwap.attemptedCount} external instances`);
+      // Surface failures alongside variable swap errors so user is informed
+      for (const f of autoSwap.failures) {
+        errors.push(f);
+        errorGroups.set(f, (errorGroups.get(f) || 0) + 1);
+      }
+    }
+  } catch (e) {
+    const msg = `Auto-swap external instances failed: ${e}`;
+    console.warn('[INSTANCE_SWAP_DEBUG] ' + msg);
+    errors.push(msg);
+    errorGroups.set(msg, (errorGroups.get(msg) || 0) + 1);
+  }
 
   for (const match of variableMatches) {
     console.log(`[VARIABLE_SWAP_DEBUG] Behandler match: ${match.field} på ${match.nodeName}`);
