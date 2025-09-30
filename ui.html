@@ -336,6 +336,10 @@
       word-wrap: break-word;
     }
 
+    .error-list li:not(:first-child) {
+      margin-top: 0.75rem;
+    }
+
     .hidden {
       display: none !important;
     }
@@ -456,9 +460,30 @@
       if (errorCount > 0) {
         errorListEl.innerHTML = '';
         
+        // Check if there are any instance override errors
+        const hasInstanceOverrideErrors = checkForInstanceOverrideErrors(errorGroups, errors);
+        const instanceNodeNames = getInstanceOverrideNodeNames(errorGroups, errors);
+        
         // If groups are sent from plugin, show summarized list
         if (Array.isArray(errorGroups) && errorGroups.length > 0) {
           const errorList = document.createElement('ul');
+          
+          // Add special message for instance override errors
+          if (hasInstanceOverrideErrors) {
+            const instanceLi = document.createElement('li');
+            const namesSuffix = Array.isArray(instanceNodeNames) && instanceNodeNames.length > 0
+              ? `<br/>Check that these are connected to the correct library: "${instanceNodeNames.join(', ')}"`
+              : '';
+            instanceLi.innerHTML = `
+              <strong>💡 Tip:</strong> Some variables cannot be overridden because they are bound to instances from the original library. 
+              Consider swapping these instances with versions from your local library.${namesSuffix}
+            `;
+            instanceLi.style.background = 'var(--figma-color-bg-secondary)';
+            instanceLi.style.color = 'var(--figma-color-text-onbrand)';
+            instanceLi.style.border = '1px solid var(--figma-color-border)';
+            errorList.appendChild(instanceLi);
+          }
+          
           errorGroups.forEach(group => {
             const li = document.createElement('li');
             li.textContent = `${group.count}× ${group.message}`;
@@ -468,6 +493,23 @@
         } else if (errors.length > 0) {
           // fallback to raw list
           const errorList = document.createElement('ul');
+          
+          // Add special message for instance override errors
+          if (hasInstanceOverrideErrors) {
+            const instanceLi = document.createElement('li');
+            const namesSuffix = Array.isArray(instanceNodeNames) && instanceNodeNames.length > 0
+              ? `<br/>Check that these are connected to the correct library: "${instanceNodeNames.join(', ')}"`
+              : '';
+            instanceLi.innerHTML = `
+              <strong>💡 Tip:</strong> Some variables cannot be overridden because they are bound to instances from the original library. 
+              Consider swapping these instances with versions from your local library.${namesSuffix}
+            `;
+            instanceLi.style.background = 'var(--figma-color-bg-brand)';
+            instanceLi.style.color = 'var(--figma-color-text-onbrand)';
+            instanceLi.style.border = '1px solid var(--figma-color-border-brand)';
+            errorList.appendChild(instanceLi);
+          }
+          
           errors.forEach(error => {
             const li = document.createElement('li');
             li.textContent = error;
@@ -482,6 +524,51 @@
       }
       
       successEl.classList.remove('hidden');
+    }
+    
+    // Helper function to check if there are instance override errors
+    function checkForInstanceOverrideErrors(errorGroups, errors) {
+      // Check error groups first
+      if (Array.isArray(errorGroups) && errorGroups.length > 0) {
+        return errorGroups.some(group => 
+          group.message && group.message.includes('Variable cannot be overridden in instance (not exposed)')
+        );
+      }
+      
+      // Fallback to check individual errors
+      if (Array.isArray(errors) && errors.length > 0) {
+        return errors.some(error => 
+          error && error.includes('Variable cannot be overridden in instance (not exposed)')
+        );
+      }
+      
+      return false;
+    }
+
+    // Helper to extract unique node names from instance override errors
+    function getInstanceOverrideNodeNames(errorGroups, errors) {
+      const names = new Set();
+      const pattern = /Swapping failed for .* on (.*?): Variable cannot be overridden in instance \(not exposed\)/;
+
+      if (Array.isArray(errorGroups) && errorGroups.length > 0) {
+        errorGroups.forEach(group => {
+          if (group && typeof group.message === 'string') {
+            const match = group.message.match(pattern);
+            if (match && match[1]) names.add(match[1]);
+          }
+        });
+      }
+
+      if (Array.isArray(errors) && errors.length > 0) {
+        errors.forEach(err => {
+          if (typeof err === 'string') {
+            const match = err.match(pattern);
+            if (match && match[1]) names.add(match[1]);
+          }
+        });
+      }
+
+      return Array.from(names);
     }
 
 
