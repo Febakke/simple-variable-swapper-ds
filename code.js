@@ -767,12 +767,15 @@ async function swapInstancesAndVariablesCombined() {
         console.log(`[COMBINED_SWAP] re-analysis matches=${variableMatches.length}`);
         // Filter to only valid matches (localVariable/localTextStyle present)
         const actionable = variableMatches.filter(m => (m.localVariable !== null) || (m.localTextStyle !== null));
-        await swapVariables(actionable);
+        const varResult = await performVariableSwapInternal(actionable);
         figma.ui.postMessage({
             type: 'combined-swap-complete',
             swappedCount: instResult.swappedCount,
             attemptedCount: instResult.attemptedCount,
-            failures: instResult.failures
+            failures: instResult.failures,
+            variableSwapped: varResult.successCount,
+            variableAttempted: actionable.length,
+            variableErrors: varResult.errorCount
         });
     }
     catch (e) {
@@ -780,8 +783,8 @@ async function swapInstancesAndVariablesCombined() {
         figma.ui.postMessage({ type: 'error', message: `Combined swap failed: ${e}` });
     }
 }
-// Swap variables based on matches
-async function swapVariables(variableMatches) {
+// Internal variable swapping used by combined flow (does not post to UI)
+async function performVariableSwapInternal(variableMatches) {
     var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
     let successCount = 0;
     let errorCount = 0;
@@ -928,13 +931,17 @@ async function swapVariables(variableMatches) {
         }
     }
     console.log(`[VARIABLE_SWAP_DEBUG] Bytting fullført: ${successCount} suksess, ${errorCount} feil`);
-    // Send result to UI
+    return { successCount, errorCount, errors, errorGroups };
+}
+// Swap variables based on matches (standalone path - posts to UI)
+async function swapVariables(variableMatches) {
+    const res = await performVariableSwapInternal(variableMatches);
     figma.ui.postMessage({
         type: 'swap-complete',
-        successCount: successCount,
-        errorCount: errorCount,
-        errors: errors,
-        errorGroups: Array.from(errorGroups.entries()).map(([message, count]) => ({ message, count }))
+        successCount: res.successCount,
+        errorCount: res.errorCount,
+        errors: res.errors,
+        errorGroups: Array.from(res.errorGroups.entries()).map(([message, count]) => ({ message, count }))
     });
 }
 // Find node that has a specific variable or nodeId

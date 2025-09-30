@@ -887,13 +887,16 @@ async function swapInstancesAndVariablesCombined() {
 
     // Filter to only valid matches (localVariable/localTextStyle present)
     const actionable = variableMatches.filter(m => (m.localVariable !== null) || (m.localTextStyle !== null));
-    await swapVariables(actionable);
+    const varResult = await performVariableSwapInternal(actionable);
 
     figma.ui.postMessage({
       type: 'combined-swap-complete',
       swappedCount: instResult.swappedCount,
       attemptedCount: instResult.attemptedCount,
-      failures: instResult.failures
+      failures: instResult.failures,
+      variableSwapped: varResult.successCount,
+      variableAttempted: actionable.length,
+      variableErrors: varResult.errorCount
     });
   } catch (e) {
     console.warn('[COMBINED_SWAP] error', e);
@@ -901,8 +904,10 @@ async function swapInstancesAndVariablesCombined() {
   }
 }
 
-// Swap variables based on matches
-async function swapVariables(variableMatches: VariableMatch[]) {
+type VariableSwapResult = { successCount: number; errorCount: number; errors: string[]; errorGroups: Map<string, number> };
+
+// Internal variable swapping used by combined flow (does not post to UI)
+async function performVariableSwapInternal(variableMatches: VariableMatch[]): Promise<VariableSwapResult> {
   let successCount = 0;
   let errorCount = 0;
   const errors: string[] = [];
@@ -1070,13 +1075,18 @@ async function swapVariables(variableMatches: VariableMatch[]) {
 
   console.log(`[VARIABLE_SWAP_DEBUG] Bytting fullført: ${successCount} suksess, ${errorCount} feil`);
 
-  // Send result to UI
+  return { successCount, errorCount, errors, errorGroups };
+}
+
+// Swap variables based on matches (standalone path - posts to UI)
+async function swapVariables(variableMatches: VariableMatch[]) {
+  const res = await performVariableSwapInternal(variableMatches);
   figma.ui.postMessage({
     type: 'swap-complete',
-    successCount: successCount,
-    errorCount: errorCount,
-    errors: errors,
-    errorGroups: Array.from(errorGroups.entries()).map(([message, count]) => ({ message, count }))
+    successCount: res.successCount,
+    errorCount: res.errorCount,
+    errors: res.errors,
+    errorGroups: Array.from(res.errorGroups.entries()).map(([message, count]) => ({ message, count }))
   });
 }
 
