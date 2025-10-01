@@ -38,30 +38,33 @@
         </div>
       </div>
 
-      <div id="results" class="results hidden">
-        <div class="summary-section">
-          <div class="summary-card">
-            <div class="summary-icon">📊</div>
-            <div class="summary-content">
-              <h3>Analysis completed for <span id="component-name"></span></h3>
-              <p id="summary-text">Found <span id="variable-count">0</span> variables and <span id="external-count">0</span> external instance(s)</p>
+      <div id="content-panel" class="content-panel hidden">
+        <!-- This panel will show either analysis results or success message -->
+        <div id="analysis-content" class="analysis-content">
+          <div class="summary-section">
+            <div class="summary-card">
+              <div class="summary-icon">📊</div>
+              <div class="summary-content">
+                <h3>Analysis completed for <span id="component-name"></span></h3>
+                <p id="summary-text">Found <span id="variable-count">0</span> variables and <span id="external-count">0</span> external instance(s)</p>
+              </div>
             </div>
+          </div>
+
+          <div class="actions">
+            <button id="swap-all-btn" class="button primary hidden" disabled>
+              <span class="button-icon">🔄</span>
+              Swap instances and variables
+            </button>
           </div>
         </div>
 
-        <div class="actions">
-          <button id="swap-all-btn" class="button primary hidden" disabled>
-            <span class="button-icon">🔄</span>
-            Swap instances and variables
-          </button>
+        <div id="success-content" class="success-content hidden">
+          <div class="success-icon">✅</div>
+          <h3>Variables swapped!</h3>
+          <p id="success-message"></p>
+          <div id="error-list" class="error-list hidden"></div>
         </div>
-      </div>
-      </div>
-      <div id="success" class="success hidden">
-        <div class="success-icon">✅</div>
-        <h3>Variables swapped!</h3>
-        <p id="success-message"></p>
-        <div id="error-list" class="error-list hidden"></div>
       </div>
     </div>
   </div>
@@ -223,10 +226,24 @@
       margin-right: 0.5rem;
     }
 
-    .results {
+    .content-panel {
       flex: 1;
       display: flex;
       flex-direction: column;
+    }
+
+    .analysis-content {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .success-content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      min-height: 6rem;
     }
 
     .component-info {
@@ -305,28 +322,18 @@
       flex: 1;
     }
 
-    .success {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      margin-top: 0.75rem;
-      min-height: 6rem;
-    }
-
     .success-icon {
       font-size: 2rem;
       margin-bottom: 1rem;
     }
 
-    .success h3 {
+    .success-content h3 {
       font-size: 1.125rem;
       font-weight: 600;
       margin-bottom: 0.5rem;
     }
 
-    .success p {
+    .success-content p {
       color: var(--figma-color-text-secondary);
       margin-bottom: 1.5rem;
     }
@@ -378,13 +385,12 @@
     const errorEl = document.getElementById('error');
     const errorMessageEl = document.getElementById('error-message');
     const mainContentEl = document.getElementById('main-content');
-    const resultsEl = document.getElementById('results');
-    const successEl = document.getElementById('success');
+    const contentPanelEl = document.getElementById('content-panel');
+    const analysisContentEl = document.getElementById('analysis-content');
+    const successContentEl = document.getElementById('success-content');
     const successMessageEl = document.getElementById('success-message');
     const errorListEl = document.getElementById('error-list');
     const componentNameEl = document.getElementById('component-name');
-    /*const componentTypeEl = document.getElementById('component-type');*/
-   /*const componentDetailsEl = document.getElementById('component-details');*/
     const variableCountEl = document.getElementById('variable-count');
     
     const loadingTextEl = document.getElementById('loading-text');
@@ -416,6 +422,8 @@
     };
 
     function analyzeSelection() {
+      // Reset everything to ensure a fresh start
+      resetUI();
       showLoading('Analyzing component...');
       parent.postMessage({ pluginMessage: { type: 'analyze-selection' } }, '*');
     }
@@ -430,10 +438,9 @@
     }
 
     function showLoading(text = 'Working...') {
-      // keep buttons in place, only hide results/success/error
-      resultsEl.classList.add('hidden');
+      // keep buttons in place, only hide content panel/error
+      contentPanelEl.classList.add('hidden');
       errorEl.classList.add('hidden');
-      successEl.classList.add('hidden');
       inlineLoadingTextEl.textContent = text;
       inlineLoadingEl.classList.remove('hidden');
       // prevent double clicks
@@ -454,9 +461,6 @@
       variableMatches = data.variableMatches || [];
       componentNameEl.textContent = data.componentName || 'Unknown component';
       
-      // Show extra details for ComponentSet
-    
-      
       // Count number of variables that can be swapped
       const swappableCount = variableMatches.filter(match => 
         match.localVariable !== null || match.localTextStyle !== null
@@ -476,18 +480,19 @@
         swapAllBtnEl.classList.add('hidden');
       }
       
-      // Vis knapp først etter analyse
-      swapAllBtnEl.disabled = !enableCombined;
+      // Show analysis content
+      analysisContentEl.classList.remove('hidden');
+      successContentEl.classList.add('hidden');
       inlineLoadingEl.classList.add('hidden');
       analyzeBtnEl.disabled = false;
-      resultsEl.classList.remove('hidden');
+      contentPanelEl.classList.remove('hidden');
     }
 
     function showExternalInstances(data) {
       hideAll();
       const count = data.count || 0;
       externalCountEl.textContent = count;
-      resultsEl.classList.remove('hidden');
+      contentPanelEl.classList.remove('hidden');
     }
 
     function showExternalSwapResult(data) {
@@ -497,15 +502,12 @@
       const varSwapped = data.variableSwapped || 0;
       const varAttempted = data.variableAttempted || 0;
       const failures = Array.isArray(data.failures) ? data.failures : [];
-      externalCountEl.textContent = attempted;
-      // Render success inside results container (same position as analysis)
-      resultsEl.classList.remove('hidden');
-      resultsEl.innerHTML = '';
-      resultsEl.appendChild(successEl);
-      // Also show success panel summary
+      
+      // Set success message
       const instText = `Swapped ${swapped}/${attempted} external instance${attempted !== 1 ? 's' : ''}`;
       const varText = varAttempted > 0 ? ` and ${varSwapped}/${varAttempted} variable${varAttempted !== 1 ? 's' : ''}` : '';
       successMessageEl.textContent = `${instText}${varText}.`;
+      
       if (failures.length > 0) {
         errorListEl.innerHTML = '';
         const ul = document.createElement('ul');
@@ -519,10 +521,14 @@
       } else {
         errorListEl.classList.add('hidden');
       }
+      
+      // Show success content
+      analysisContentEl.classList.add('hidden');
+      successContentEl.classList.remove('hidden');
       inlineLoadingEl.classList.add('hidden');
       analyzeBtnEl.disabled = false;
       swapAllBtnEl.disabled = true;
-      successEl.classList.remove('hidden');
+      contentPanelEl.classList.remove('hidden');
     }
 
     function showSuccess(data) {
@@ -604,14 +610,13 @@
         errorListEl.classList.add('hidden');
       }
       
+      // Show success content
+      analysisContentEl.classList.add('hidden');
+      successContentEl.classList.remove('hidden');
       inlineLoadingEl.classList.add('hidden');
       analyzeBtnEl.disabled = false;
       swapAllBtnEl.disabled = true;
-      // Render success inside results container (same position as analysis)
-      resultsEl.classList.remove('hidden');
-      resultsEl.innerHTML = '';
-      resultsEl.appendChild(successEl);
-      successEl.classList.remove('hidden');
+      contentPanelEl.classList.remove('hidden');
     }
     
     // Helper function to check if there are instance override errors
@@ -660,11 +665,34 @@
     }
 
 
+    function resetUI() {
+      // Reset all UI elements to their initial state
+      hideAll();
+      
+      // Reset button states
+      analyzeBtnEl.disabled = false;
+      swapAllBtnEl.disabled = true;
+      swapAllBtnEl.classList.add('hidden');
+      
+      // Clear any content that might be lingering
+      errorListEl.innerHTML = '';
+      errorListEl.classList.add('hidden');
+      
+      // Reset variable matches
+      variableMatches = [];
+      
+      // Reset text content
+      componentNameEl.textContent = '';
+      variableCountEl.textContent = '0';
+      externalCountEl.textContent = '0';
+      successMessageEl.textContent = '';
+      errorMessageEl.textContent = '';
+    }
+
     function hideAll() {
       loadingEl.classList.add('hidden');
       errorEl.classList.add('hidden');
-      resultsEl.classList.add('hidden');
-      successEl.classList.add('hidden');
+      contentPanelEl.classList.add('hidden');
       inlineLoadingEl.classList.add('hidden');
     }
   </script>
